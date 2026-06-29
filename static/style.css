@@ -83,6 +83,10 @@ button {
 }
 button:hover { background: var(--brand-dark); }
 button.danger { background: var(--danger); }
+button.secondary { background: #e9edf7; color: var(--brand); }
+button.secondary:hover { background: #dde4f3; }
+.btn-row { display: flex; gap: 0.7rem; flex-wrap: wrap; align-items: center; }
+.btn-row form { margin: 0; }
 button.link-danger {
   background: none;
   color: var(--danger);

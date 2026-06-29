@@ -38,6 +38,7 @@ from models import (
     AttendancePunch,
     User,
     db,
+    import_device_users,
     sync_from_device,
     utcnow,
 )
@@ -132,6 +133,7 @@ def register_routes(app):
             "dashboard.html",
             sessions=sessions[:10],
             is_clocked_in=current_user.is_clocked_in,
+            last_punch_at=current_user.last_punch_at,
             enrolled=current_user.device_uid is not None,
             last_sync=_last_sync,
         )
@@ -173,6 +175,24 @@ def register_routes(app):
                 msg += f", {result.unmapped} from unmapped device IDs"
             flash(msg + ".", "success")
         return redirect(request.referrer or url_for("device"))
+
+    @app.route("/device/import-users", methods=["POST"])
+    @admin_required
+    def import_users():
+        connector = app.device_connector
+        if connector is None:
+            flash("No device configured.", "error")
+            return redirect(url_for("device"))
+        created, skipped, error = import_device_users(connector)
+        if error:
+            flash(f"Import failed: {error}", "error")
+        else:
+            flash(
+                f"Imported {created} new employee(s) from the device "
+                f"({skipped} already linked).",
+                "success",
+            )
+        return redirect(url_for("employees"))
 
     @app.route("/device")
     @admin_required

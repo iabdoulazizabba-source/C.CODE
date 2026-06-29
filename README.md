@@ -18,15 +18,30 @@ someone scans. The app:
    poller every `DEVICE_POLL_INTERVAL` seconds).
 2. **Imports** new punches, de-duplicated so re-polling never double-counts.
 3. **Maps** each punch to an employee by their **Device ID** (enrollment id).
-4. **Derives** work sessions by pairing punches chronologically
-   (1st = in, 2nd = out, …) and totals the hours.
+   Admins can bulk-create accounts from the device via **Import users**.
+4. **Derives** daily work sessions and totals the hours (see below).
+
+### How hours are calculated
+
+The terminal (e.g. a ZKTeco **F18**) records a *punch* per scan but does **not**
+tag it as in vs out (`punch=255`). So per employee, per calendar day:
+
+- near-identical scans within ~2 minutes are collapsed (fingerprint readers
+  often double- or triple-read the same person), then
+- the **first** remaining scan is the clock-in and the **last** is the clock-out
+  ("first-in / last-out").
+
+A day with only a single scan is shown as an **open / incomplete** session (no
+clock-out) rather than counted as zero hours. Raw punches are stored verbatim,
+so this rule can be refined later without re-reading the device.
 
 ## Features
 
 - **Login / authentication** with `admin` and `employee` roles
 - **Employee management** + linking each employee to a device enrollment id
+- **Import users** — create employee accounts straight from the device roster
 - **Device page**: connection status, enrolled users, unmapped IDs, manual sync
-- **Timesheet reports** derived from device punches
+- **Timesheet reports** derived from device punches (first-in / last-out, deduped)
 
 ## Quick start
 
@@ -88,8 +103,16 @@ The database is a local SQLite file created automatically on first run.
 
 ## Notes & limitations
 
-- Punches are paired chronologically; the device's own in/out tag isn't relied
-  on (ZKTeco terminals report it inconsistently). The raw punches are stored, so
-  the pairing rule can be refined later without data loss.
+- Hours use first-in / last-out per day (see above), which counts mid-day breaks
+  as worked time unless staff clock out for them. Raw punches are stored, so the
+  rule can be refined later without re-reading the device.
+- The device's own in/out tag isn't relied on — the tested F18 reports `255`
+  (untagged) for every scan.
 - This uses Flask's development server. Put a production WSGI server (e.g.
   `waitress` or `gunicorn`) in front before real deployment.
+
+## Verified hardware
+
+Tested live against a **ZKTeco F18** (firmware reporting `punch=255`) over TCP
+on the LAN: user import, a 825-record punch sync, de-duplication, and report
+generation all confirmed working.

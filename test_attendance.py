@@ -1,12 +1,19 @@
 """Tests for the time & attendance app (device-sourced)."""
 
-from datetime import datetime
+from datetime import date, datetime, time as dtime
 
 import pytest
 
 from app import create_app
 from device import FakeConnector, Punch, DeviceUser
-from models import AttendancePunch, User, build_sessions, db, sync_from_device
+from models import (
+    AttendancePunch,
+    User,
+    build_sessions,
+    db,
+    import_device_users,
+    sync_from_device,
+)
 
 
 def make_app(connector=None):
@@ -57,16 +64,42 @@ def test_password_hashing(app):
         assert not user.check_password("wrong")
 
 
-def test_build_sessions_pairs_punches():
+def test_build_sessions_first_in_last_out_per_day():
+    # One day, three scans -> one session spanning first..last (Rule A).
     punches = [
-        Punch("1", datetime(2026, 1, 1, 9, 0)),
+        Punch("1", datetime(2026, 1, 1, 8, 0)),
         Punch("1", datetime(2026, 1, 1, 12, 30)),
-        Punch("1", datetime(2026, 1, 1, 13, 0)),
+        Punch("1", datetime(2026, 1, 1, 17, 0)),
+    ]
+    sessions = build_sessions(punches)
+    assert len(sessions) == 1
+    assert sessions[0].hours == 9.0
+    assert not sessions[0].is_open
+
+
+def test_build_sessions_dedupes_near_identical_scans():
+    # Duplicate fingerprint reads within ~2 min collapse to one scan.
+    punches = [
+        Punch("1", datetime(2026, 1, 1, 7, 52, 0)),
+        Punch("1", datetime(2026, 1, 1, 7, 52, 30)),  # duplicate -> dropped
+        Punch("1", datetime(2026, 1, 1, 17, 53, 0)),
+        Punch("1", datetime(2026, 1, 1, 17, 53, 20)),  # duplicate -> dropped
+    ]
+    sessions = build_sessions(punches)
+    assert len(sessions) == 1
+    assert sessions[0].hours == round((17 + 53 / 60) - (7 + 52 / 60), 2)
+
+
+def test_build_sessions_splits_by_day():
+    punches = [
+        Punch("1", datetime(2026, 1, 1, 8, 0)),
+        Punch("1", datetime(2026, 1, 1, 17, 0)),
+        Punch("1", datetime(2026, 1, 2, 9, 0)),  # single scan next day = open
     ]
     sessions = build_sessions(punches)  # most recent first
     assert len(sessions) == 2
-    assert sessions[0].is_open          # trailing 13:00 punch = open
-    assert sessions[1].hours == 3.5     # 09:00 -> 12:30
+    assert sessions[0].is_open          # 2026-01-02, one scan
+    assert sessions[1].hours == 9.0     # 2026-01-01
 
 
 def test_seed_admin_exists(app):
@@ -102,13 +135,37 @@ def test_sync_imports_maps_and_dedups(app):
         assert not alice.is_clocked_in
 
 
-def test_open_session_means_clocked_in(app):
+def test_single_scan_today_means_clocked_in(app):
     with app.app_context():
         add_user("carol", device_uid="3003")
-        conn = FakeConnector(punches=[Punch("3003", datetime(2026, 1, 1, 8, 0))])
+        today_8am = datetime.combine(date.today(), dtime(8, 0))
+        conn = FakeConnector(punches=[Punch("3003", today_8am)])
         sync_from_device(conn)
         carol = User.query.filter_by(username="carol").first()
-        assert carol.is_clocked_in
+        assert carol.is_clocked_in  # one scan today, no clock-out yet
+
+
+def test_import_device_users_creates_linked_accounts(app):
+    with app.app_context():
+        # A punch arrives before any account exists for this device id.
+        sync_from_device(FakeConnector(
+            punches=[Punch("77", datetime(2026, 1, 1, 8, 0)),
+                     Punch("77", datetime(2026, 1, 1, 17, 0))],
+        ))
+        conn = FakeConnector(users=[DeviceUser("77", "MEKINDA")])
+
+        created, skipped, error = import_device_users(conn)
+        assert error is None
+        assert created == 1
+
+        u = User.query.filter_by(device_uid="77").first()
+        assert u is not None and u.full_name == "MEKINDA"
+        # existing punches got linked, so hours are computed
+        assert u.sessions()[0].hours == 9.0
+
+        # Running again skips the already-linked device user.
+        created2, skipped2, _ = import_device_users(conn)
+        assert created2 == 0 and skipped2 == 1
 
 
 def test_mapping_after_import_links_existing_punches(app, client):

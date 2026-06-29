@@ -6,13 +6,19 @@ Attendance comes from a physical ZKTeco terminal: each scan is a raw
 sessions and hours by pairing them chronologically.
 """
 
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import date, datetime, timezone
 
 from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
 
 db = SQLAlchemy()
+
+# Scans closer together than this (per person) are treated as one — the F18
+# fingerprint reader often records the same person two or three times within
+# seconds.
+DEFAULT_DEDUP_MINUTES = 2
 
 
 def utcnow():
@@ -48,15 +54,22 @@ class User(UserMixin, db.Model):
         return self.role == "admin"
 
     def sessions(self):
-        """Paired work sessions for this user (most recent first)."""
+        """Daily work sessions for this user (most recent first)."""
         return build_sessions(
             sorted(self.punches, key=lambda p: p.timestamp)
         )
 
     @property
+    def last_punch_at(self):
+        if not self.punches:
+            return None
+        return max(p.timestamp for p in self.punches)
+
+    @property
     def is_clocked_in(self):
+        """Best-effort: an open (single-scan) session dated today."""
         sess = self.sessions()
-        return bool(sess) and sess[0].is_open
+        return bool(sess) and sess[0].is_open and sess[0].clock_in.date() == date.today()
 
 
 class AttendancePunch(db.Model):
@@ -98,24 +111,36 @@ class Session:
         return round((self.clock_out - self.clock_in).total_seconds() / 3600, 2)
 
 
-def build_sessions(punches):
-    """Pair an ordered list of punches into work sessions.
+def dedupe_times(times, window_minutes=DEFAULT_DEDUP_MINUTES):
+    """Collapse scans within ``window_minutes`` of the previously kept one."""
+    kept = []
+    for t in sorted(times):
+        if not kept or (t - kept[-1]).total_seconds() >= window_minutes * 60:
+            kept.append(t)
+    return kept
 
-    ZKTeco terminals don't reliably tag punches as in/out, so we pair
-    them chronologically: 1st = in, 2nd = out, 3rd = in, ... A trailing
-    unpaired punch is an open (still clocked-in) session. Returns
-    sessions most-recent first.
+
+def build_sessions(punches, dedup_minutes=DEFAULT_DEDUP_MINUTES):
+    """Derive one work session per calendar day (most recent first).
+
+    The F18 doesn't tag scans as in/out (punch=255), so for each day we
+    de-duplicate near-identical scans, then take the first scan as
+    clock-in and the last as clock-out ("first-in / last-out"). A day
+    with a single scan is an open/incomplete session (no clock-out).
     """
+    by_day = defaultdict(list)
+    for punch in punches:
+        by_day[punch.timestamp.date()].append(punch.timestamp)
+
     sessions = []
-    pending_in = None
-    for punch in punches:  # assumed sorted ascending by timestamp
-        if pending_in is None:
-            pending_in = punch.timestamp
+    for day in sorted(by_day):
+        times = dedupe_times(by_day[day], dedup_minutes)
+        if not times:
+            continue
+        if len(times) == 1:
+            sessions.append(Session(times[0], None))  # only one scan that day
         else:
-            sessions.append(Session(pending_in, punch.timestamp))
-            pending_in = None
-    if pending_in is not None:
-        sessions.append(Session(pending_in, None))
+            sessions.append(Session(times[0], times[-1]))
     sessions.reverse()
     return sessions
 
@@ -177,3 +202,55 @@ def sync_from_device(connector):
 
     db.session.commit()
     return SyncResult(imported=imported, skipped=skipped, unmapped=unmapped)
+
+
+def _slug(name, fallback):
+    keep = "".join(c for c in (name or "").lower() if c.isalnum())
+    return keep or fallback
+
+
+def import_device_users(connector, default_password="changeme123"):
+    """Create employee accounts for users enrolled on the device.
+
+    Skips device ids already linked to an account. Returns ``(created,
+    skipped, error)``. New accounts get ``default_password`` (they should
+    change it) and have their existing punches linked immediately.
+    """
+    from device import DeviceError
+
+    try:
+        device_users = connector.fetch_users()
+    except DeviceError as exc:
+        return 0, 0, str(exc)
+
+    taken_uids = {
+        u.device_uid for u in User.query.filter(User.device_uid.isnot(None)).all()
+    }
+    existing_names = {u.username for u in User.query.all()}
+
+    created = skipped = 0
+    for du in device_users:
+        if du.device_uid in taken_uids:
+            skipped += 1
+            continue
+        username = _slug(du.name, f"user{du.device_uid}")
+        if username in existing_names:
+            username = f"{username}{du.device_uid}"
+        user = User(
+            username=username,
+            full_name=du.name or f"User {du.device_uid}",
+            role="employee",
+            device_uid=du.device_uid,
+        )
+        user.set_password(default_password)
+        db.session.add(user)
+        db.session.flush()  # assign id so we can link punches
+        AttendancePunch.query.filter_by(
+            device_uid=du.device_uid, user_id=None
+        ).update({"user_id": user.id})
+        existing_names.add(username)
+        taken_uids.add(du.device_uid)
+        created += 1
+
+    db.session.commit()
+    return created, skipped, None

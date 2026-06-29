@@ -37,9 +37,19 @@
     </tr>
   </table>
 
-  <form method="post" action="{{ url_for('sync') }}">
-    <button type="submit">Sync now</button>
-  </form>
+  <div class="btn-row">
+    <form method="post" action="{{ url_for('sync') }}">
+      <button type="submit">Sync now</button>
+    </form>
+    <form method="post" action="{{ url_for('import_users') }}">
+      <button type="submit" class="secondary">Import users from device</button>
+    </form>
+  </div>
+  <p class="muted small">
+    “Import users” creates an employee account for each person enrolled on the
+    terminal, pre-linked to their Device ID (default password
+    <code>changeme123</code> — change it on first login).
+  </p>
 </div>
 
 {% if unmapped %}

@@ -10,14 +10,19 @@
       appear. Ask an admin to set your device ID.
     </p>
   {% elif is_clocked_in %}
-    <p class="status status-in">● Currently clocked in (per the device).</p>
+    <p class="status status-in">● On site — scanned in today, no clock-out yet.</p>
   {% else %}
-    <p class="status status-out">○ Currently clocked out.</p>
+    <p class="status status-out">○ Not currently on site.</p>
   {% endif %}
 
+  {% if enrolled %}
   <p class="muted small">
-    Attendance is read from the terminal. Times update after each device sync.
+    Last scan:
+    {% if last_punch_at %}{{ last_punch_at.strftime("%Y-%m-%d %H:%M") }}
+    {% else %}none yet{% endif %}.
+    Attendance is read from the terminal and updates after each device sync.
   </p>
+  {% endif %}
 </div>
 
 <div class="card">
