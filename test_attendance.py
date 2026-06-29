@@ -6,6 +6,8 @@ import pytest
 
 from app import create_app
 from device import FakeConnector, Punch, DeviceUser
+from models import Session
+from schedule import DEFAULT_SCHEDULE, Schedule
 from models import (
     AttendancePunch,
     OffshoreMission,
@@ -229,6 +231,37 @@ def test_ignored_punch_excluded_from_hours(app):
         db.session.commit()
         sess = User.query.filter_by(username="frank").first().sessions()
         assert sess[0].is_open
+
+
+def test_schedule_net_hours_deducts_break():
+    s = Schedule()  # default: 08:00-18:00, break 12:00-14:00
+    assert s.expected_hours == 8.0
+    full = s.net_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0))
+    assert full == 8.0  # 10h span - 2h break
+    half = s.net_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 13, 0))
+    assert half == 4.0  # 5h span - 1h break overlap (12:00-13:00)
+
+
+def test_schedule_flags_late_early_overtime():
+    s = Schedule()
+    assert not s.is_late(datetime(2026, 1, 5, 8, 0))     # exactly on time
+    assert not s.is_late(datetime(2026, 1, 5, 8, 10))    # within grace
+    assert s.is_late(datetime(2026, 1, 5, 8, 30))
+    assert s.lateness_minutes(datetime(2026, 1, 5, 8, 30)) == 20  # past 08:10
+    assert s.is_early_leave(datetime(2026, 1, 5, 17, 0))
+    assert not s.is_early_leave(datetime(2026, 1, 5, 18, 0))
+    assert s.overtime_hours(9.0) == 1.0
+    assert s.overtime_hours(8.0) == 0.0
+
+
+def test_session_exposes_schedule_flags():
+    late_long = Session(datetime(2026, 1, 5, 8, 30), datetime(2026, 1, 5, 19, 0))
+    assert late_long.is_late
+    assert late_long.net_hours == 8.5      # 10.5h span - 2h break
+    assert late_long.overtime_hours == 0.5
+    on_time = Session(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 16, 0))
+    assert not on_time.is_late
+    assert on_time.is_early_leave          # left before 18:00
 
 
 def test_offshore_mission_days_and_coverage(app):

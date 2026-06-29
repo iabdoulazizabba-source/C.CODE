@@ -45,6 +45,7 @@ from models import (
     sync_from_device,
     utcnow,
 )
+from schedule import DEFAULT_SCHEDULE
 
 login_manager = LoginManager()
 login_manager.login_view = "login"
@@ -460,17 +461,34 @@ def register_routes(app):
         )
 
         rows = []
-        totals = defaultdict(float)
+        summary = []
         for person in people:
+            net = ot = 0.0
+            late_days = 0
             for session in person.sessions():
+                rows.append((person.full_name, session))
                 if session.is_open:
                     continue
-                rows.append((person.full_name, session))
-                totals[person.full_name] += session.hours
+                net += session.net_hours
+                ot += session.overtime_hours
+                if session.is_late:
+                    late_days += 1
+            summary.append({
+                "name": person.full_name,
+                "net": round(net, 2),
+                "overtime": round(ot, 2),
+                "late_days": late_days,
+                "offshore_days": person.offshore_days,
+            })
 
         rows.sort(key=lambda r: r[1].clock_in, reverse=True)
-        totals = dict(sorted(totals.items()))
-        return render_template("reports.html", rows=rows, totals=totals)
+        summary.sort(key=lambda s: s["name"])
+        return render_template(
+            "reports.html",
+            rows=rows,
+            summary=summary,
+            expected_hours=DEFAULT_SCHEDULE.expected_hours,
+        )
 
 
 def _link_existing_punches(user):

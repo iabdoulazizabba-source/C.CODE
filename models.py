@@ -13,6 +13,8 @@ from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from schedule import DEFAULT_SCHEDULE
+
 db = SQLAlchemy()
 
 # Scans closer together than this (per person) are treated as one — the F18
@@ -139,7 +141,12 @@ class OffshoreMission(db.Model):
 
 
 class Session:
-    """A derived clock-in / clock-out pair (not stored in the DB)."""
+    """A derived clock-in / clock-out pair (not stored in the DB).
+
+    ``hours`` is the raw on-site span; ``net_hours`` deducts the scheduled
+    lunch break and is the figure used for pay. Flags (late, early leave,
+    overtime) come from the active work schedule.
+    """
 
     def __init__(self, clock_in, clock_out=None):
         self.clock_in = clock_in
@@ -150,10 +157,36 @@ class Session:
         return self.clock_out is None
 
     @property
+    def date(self):
+        return self.clock_in.date()
+
+    @property
     def hours(self):
         if self.clock_out is None:
             return 0.0
         return round((self.clock_out - self.clock_in).total_seconds() / 3600, 2)
+
+    @property
+    def net_hours(self):
+        if self.clock_out is None:
+            return 0.0
+        return DEFAULT_SCHEDULE.net_hours(self.clock_in, self.clock_out)
+
+    @property
+    def overtime_hours(self):
+        return DEFAULT_SCHEDULE.overtime_hours(self.net_hours)
+
+    @property
+    def is_late(self):
+        return DEFAULT_SCHEDULE.is_late(self.clock_in)
+
+    @property
+    def lateness_minutes(self):
+        return DEFAULT_SCHEDULE.lateness_minutes(self.clock_in)
+
+    @property
+    def is_early_leave(self):
+        return (not self.is_open) and DEFAULT_SCHEDULE.is_early_leave(self.clock_out)
 
 
 def dedupe_times(times, window_minutes=DEFAULT_DEDUP_MINUTES):

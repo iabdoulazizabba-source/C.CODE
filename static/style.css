@@ -125,6 +125,11 @@ table form { margin: 0; }
 }
 .badge-admin { background: #e7f5ff; color: var(--brand); }
 .badge-employee { background: #f1f3f5; color: var(--muted); }
+.badge-late { background: #fff0f0; color: var(--danger); }
+.badge-early { background: #fff4e6; color: #e8590c; }
+.badge-ot { background: #ebfbee; color: var(--ok); }
+.badge-open { background: #f1f3f5; color: var(--muted); }
+.badge + .badge { margin-left: 0.25rem; }
 
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }

@@ -3,20 +3,35 @@
 {% block content %}
 <div class="card">
   <h1>Timesheet report</h1>
-  <p class="muted small">Derived from device punches. Open sessions are excluded.</p>
+  <p class="muted small">
+    Hours are <strong>net</strong> (on-site span minus the {{ "%.0f"|format(2) }}h
+    lunch break). A full scheduled day is {{ "%.1f"|format(expected_hours) }}h
+    (Mon–Fri, 08:00–18:00). Open/incomplete sessions are excluded from totals.
+  </p>
 
-  <h2>Total hours</h2>
-  {% if totals %}
+  <h2>Summary</h2>
+  {% if summary %}
   <table>
-    <thead><tr><th>Employee</th><th>Total hours</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Employee</th><th>Net hours</th><th>Overtime</th>
+        <th>Late days</th><th>Offshore days</th>
+      </tr>
+    </thead>
     <tbody>
-      {% for name, hours in totals.items() %}
-      <tr><td>{{ name }}</td><td>{{ "%.2f"|format(hours) }}</td></tr>
+      {% for s in summary %}
+      <tr>
+        <td>{{ s.name }}</td>
+        <td>{{ "%.2f"|format(s.net) }}</td>
+        <td>{% if s.overtime %}<strong>{{ "%.2f"|format(s.overtime) }}</strong>{% else %}—{% endif %}</td>
+        <td>{% if s.late_days %}<span class="badge badge-late">{{ s.late_days }}</span>{% else %}0{% endif %}</td>
+        <td>{{ s.offshore_days }}</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No completed work sessions yet.</p>
+  <p class="muted">No data yet.</p>
   {% endif %}
 </div>
 
@@ -25,21 +40,31 @@
   {% if rows %}
   <table>
     <thead>
-      <tr><th>Employee</th><th>Clock in</th><th>Clock out</th><th>Hours</th></tr>
+      <tr>
+        <th>Employee</th><th>Date</th><th>In</th><th>Out</th>
+        <th>Net h</th><th>Flags</th>
+      </tr>
     </thead>
     <tbody>
       {% for name, s in rows %}
       <tr>
         <td>{{ name }}</td>
-        <td>{{ s.clock_in.strftime("%Y-%m-%d %H:%M") }}</td>
-        <td>{{ s.clock_out.strftime("%Y-%m-%d %H:%M") }}</td>
-        <td>{{ "%.2f"|format(s.hours) }}</td>
+        <td>{{ s.clock_in.strftime("%Y-%m-%d") }}</td>
+        <td>{{ s.clock_in.strftime("%H:%M") }}</td>
+        <td>{% if s.is_open %}<em>—</em>{% else %}{{ s.clock_out.strftime("%H:%M") }}{% endif %}</td>
+        <td>{{ "%.2f"|format(s.net_hours) }}</td>
+        <td>
+          {% if s.is_open %}<span class="badge badge-open">incomplete</span>{% endif %}
+          {% if s.is_late %}<span class="badge badge-late" title="{{ s.lateness_minutes }} min late">late</span>{% endif %}
+          {% if s.is_early_leave %}<span class="badge badge-early">left early</span>{% endif %}
+          {% if s.overtime_hours %}<span class="badge badge-ot">+{{ "%.1f"|format(s.overtime_hours) }}h OT</span>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No completed work sessions yet.</p>
+  <p class="muted">No sessions yet.</p>
   {% endif %}
 </div>
 {% endblock %}

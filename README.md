@@ -29,11 +29,24 @@ tag it as in vs out (`punch=255`). So per employee, per calendar day:
 - near-identical scans within ~2 minutes are collapsed (fingerprint readers
   often double- or triple-read the same person), then
 - the **first** remaining scan is the clock-in and the **last** is the clock-out
-  ("first-in / last-out").
+  ("first-in / last-out"), then
+- the scheduled **lunch break** (12:00–14:00) is deducted to give **net hours**.
 
 A day with only a single scan is shown as an **open / incomplete** session (no
 clock-out) rather than counted as zero hours. Raw punches are stored verbatim,
 so this rule can be refined later without re-reading the device.
+
+### Work schedule & flags
+
+The default schedule is **Mon–Fri, 08:00–18:00, lunch 12:00–14:00** → a full day
+is **8 net hours**. Reports flag each session:
+
+- **late** — first scan later than 08:00 + grace (default 10 min)
+- **left early** — last scan before 18:00 − grace
+- **overtime** — net hours beyond the 8h day
+
+Override the schedule with `WORK_START`, `WORK_END`, `BREAK_START`, `BREAK_END`,
+and `LATE_GRACE_MINUTES` (e.g. `WORK_END=17:00`).
 
 ## Features
 
@@ -45,6 +58,8 @@ so this rule can be refined later without re-reading the device.
 - **Offshore missions** — mark date ranges an employee is offshore; counted as
   days present (not hours) and never flagged as absences
 - **Device page**: connection status, enrolled users, unmapped IDs, manual sync
+- **Schedule-aware reports** — net hours (after lunch break) plus late /
+  left-early / overtime flags per session
 - **Timesheet reports** derived from device punches (first-in / last-out, deduped)
 
 ## Quick start
