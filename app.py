@@ -10,15 +10,17 @@ Features:
   * Timesheet reports derived from device punches
 """
 
+import csv
+import io
 import os
 import threading
 import time
-from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from functools import wraps
 
 from flask import (
     Flask,
+    Response,
     abort,
     flash,
     redirect,
@@ -45,6 +47,7 @@ from models import (
     sync_from_device,
     utcnow,
 )
+from reporting import build_report
 from schedule import DEFAULT_SCHEDULE
 
 login_manager = LoginManager()
@@ -453,42 +456,93 @@ def register_routes(app):
     @app.route("/reports")
     @login_required
     def reports():
-        # Employees see only their own hours; admins see everyone.
-        people = (
-            User.query.order_by(User.full_name).all()
-            if current_user.is_admin
-            else [current_user]
-        )
-
-        rows = []
-        summary = []
-        for person in people:
-            net = ot = 0.0
-            late_days = 0
-            for session in person.sessions():
-                rows.append((person.full_name, session))
-                if session.is_open:
-                    continue
-                net += session.net_hours
-                ot += session.overtime_hours
-                if session.is_late:
-                    late_days += 1
-            summary.append({
-                "name": person.full_name,
-                "net": round(net, 2),
-                "overtime": round(ot, 2),
-                "late_days": late_days,
-                "offshore_days": person.offshore_days,
-            })
-
-        rows.sort(key=lambda r: r[1].clock_in, reverse=True)
-        summary.sort(key=lambda s: s["name"])
+        start, end = _parse_range()
+        people, selected = _report_people()
+        reports = build_report(people, start, end)
+        # Show day-by-day detail only when a single employee is in view.
+        detail = reports[0] if len(reports) == 1 else None
         return render_template(
             "reports.html",
-            rows=rows,
-            summary=summary,
+            reports=reports,
+            detail=detail,
+            start=start,
+            end=end,
+            selected=selected,
+            all_employees=(
+                User.query.order_by(User.full_name).all()
+                if current_user.is_admin else []
+            ),
             expected_hours=DEFAULT_SCHEDULE.expected_hours,
         )
+
+    @app.route("/reports.csv")
+    @login_required
+    def reports_csv():
+        start, end = _parse_range()
+        people, _ = _report_people()
+        reports = build_report(people, start, end)
+        kind = request.args.get("kind", "summary")
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        if kind == "days":
+            writer.writerow(["Employee", "Date", "Weekday", "Status", "In",
+                             "Out", "Net hours", "Overtime", "Late", "Left early"])
+            for rep in reports:
+                for d in rep.days:
+                    writer.writerow([
+                        rep.name, d.day.isoformat(), d.weekday, d.status,
+                        d.clock_in.strftime("%H:%M") if d.clock_in else "",
+                        d.clock_out.strftime("%H:%M") if d.clock_out else "",
+                        f"{d.net_hours:.2f}", f"{d.overtime:.2f}",
+                        "yes" if d.late else "", "yes" if d.early else "",
+                    ])
+        else:
+            writer.writerow(["Employee", "Net hours", "Overtime", "Present days",
+                             "Incomplete", "Late days", "Absent days",
+                             "Offshore days"])
+            for rep in reports:
+                writer.writerow([
+                    rep.name, f"{rep.net_hours:.2f}", f"{rep.overtime:.2f}",
+                    rep.present_days, rep.incomplete_days, rep.late_days,
+                    rep.absent_days, rep.offshore_days,
+                ])
+
+        filename = f"timesheet_{start.isoformat()}_{end.isoformat()}_{kind}.csv"
+        return Response(
+            buffer.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+
+def _parse_date(value, default):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return default
+
+
+def _parse_range():
+    """Date range from query params; defaults to the current month-to-date."""
+    today = date.today()
+    start = _parse_date(request.args.get("start"), today.replace(day=1))
+    end = _parse_date(request.args.get("end"), today)
+    if end < start:
+        start, end = end, start
+    return start, end
+
+
+def _report_people():
+    """(employees to report on, selected id). Non-admins see only themselves."""
+    if not current_user.is_admin:
+        return [current_user], current_user.id
+    emp_id = request.args.get("employee", type=int)
+    if emp_id:
+        person = db.session.get(User, emp_id)
+        if person:
+            return [person], emp_id
+    return User.query.order_by(User.full_name).all(), None
 
 
 def _link_existing_punches(user):

@@ -7,6 +7,7 @@ import pytest
 from app import create_app
 from device import FakeConnector, Punch, DeviceUser
 from models import Session
+from reporting import build_report
 from schedule import DEFAULT_SCHEDULE, Schedule
 from models import (
     AttendancePunch,
@@ -278,6 +279,63 @@ def test_offshore_mission_days_and_coverage(app):
         assert gwen.offshore_days == 10
         assert gwen.is_offshore_on(date(2026, 3, 5))
         assert not gwen.is_offshore_on(date(2026, 3, 11))
+
+
+def test_report_flags_present_absent_offshore(app):
+    with app.app_context():
+        user = add_user("iris", device_uid="80")
+        # Worked Mon 2026-03-02 (08:00-18:00) and Tue 2026-03-03.
+        for day in (2, 3):
+            add_manual_punch(user, datetime(2026, 3, day, 8, 0))
+            add_manual_punch(user, datetime(2026, 3, day, 18, 0))
+        # Offshore Thu-Fri 2026-03-05..06.
+        db.session.add(OffshoreMission(
+            user_id=user.id, start_date=date(2026, 3, 5), end_date=date(2026, 3, 6),
+        ))
+        db.session.commit()
+        iris = User.query.filter_by(username="iris").first()
+
+        # Mon 2026-03-02 .. Fri 2026-03-06 (Wed is a workday with no scans).
+        rep = build_report([iris], date(2026, 3, 2), date(2026, 3, 6),
+                           today=date(2026, 3, 31))[0]
+        assert rep.present_days == 2
+        assert rep.absent_days == 1          # Wed 03-04
+        assert rep.offshore_days == 2        # Thu+Fri
+        assert rep.net_hours == 16.0         # 2 full days x 8h
+        statuses = {d.day.day: d.status for d in rep.days}
+        assert statuses[4] == "absent"
+        assert statuses[5] == "offshore"
+
+
+def test_report_skips_weekends_and_future(app):
+    with app.app_context():
+        user = add_user("jack", device_uid="81")
+        # Sat 2026-03-07 has no scans -> must NOT be absent (weekend).
+        rep = build_report([user], date(2026, 3, 7), date(2026, 3, 8),
+                           today=date(2026, 3, 31))[0]
+        assert rep.absent_days == 0
+        assert rep.days == []
+
+        # Future days aren't evaluated.
+        rep2 = build_report([user], date(2026, 3, 2), date(2026, 3, 31),
+                            today=date(2026, 3, 4))[0]
+        assert all(d.day <= date(2026, 3, 4) for d in rep2.days)
+
+
+def test_reports_csv_download(client, app):
+    with app.app_context():
+        user = add_user("kate", device_uid="82")
+        add_manual_punch(user, datetime(2026, 3, 2, 8, 0))
+        add_manual_punch(user, datetime(2026, 3, 2, 18, 0))
+        uid = user.id
+    login(client)
+    resp = client.get(
+        f"/reports.csv?kind=summary&start=2026-03-01&end=2026-03-31&employee={uid}"
+    )
+    assert resp.status_code == 200
+    assert "text/csv" in resp.content_type
+    assert b"Net hours" in resp.data
+    assert b"Kate" in resp.data
 
 
 def test_add_punch_route_and_employee_detail(client, app):

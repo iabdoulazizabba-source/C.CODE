@@ -60,6 +60,9 @@ and `LATE_GRACE_MINUTES` (e.g. `WORK_END=17:00`).
 - **Device page**: connection status, enrolled users, unmapped IDs, manual sync
 - **Schedule-aware reports** — net hours (after lunch break) plus late /
   left-early / overtime flags per session
+- **Pay-period reports** — filter by date range and employee, with per-day
+  **absence detection** (a weekday with no scans and not offshore) and
+  **CSV export** (summary or detailed) for payroll
 - **Timesheet reports** derived from device punches (first-in / last-out, deduped)
 
 ## Quick start
