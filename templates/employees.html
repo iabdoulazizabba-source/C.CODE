@@ -7,13 +7,17 @@
     The <strong>Device ID</strong> is the enrollment number on the attendance
     terminal. It links a person to their punches.
   </p>
+  <p class="muted small">
+    Inactive employees (e.g. the admin login or staff who left) are excluded
+    from reports and the Today board.
+  </p>
   <table>
     <thead>
-      <tr><th>Name</th><th>Username</th><th>Role</th><th>Device ID</th><th></th></tr>
+      <tr><th>Name</th><th>Username</th><th>Role</th><th>Device ID</th><th>Active</th><th></th></tr>
     </thead>
     <tbody>
       {% for person in people %}
-      <tr>
+      <tr class="{% if not person.active %}row-inactive{% endif %}">
         <td><a href="{{ url_for('employee_detail', user_id=person.id) }}">{{ person.full_name }}</a></td>
         <td>{{ person.username }}</td>
         <td><span class="badge badge-{{ person.role }}">{{ person.role }}</span></td>
@@ -24,6 +28,13 @@
             <input type="text" name="device_uid" value="{{ person.device_uid or '' }}"
                    placeholder="—" size="8">
             <button type="submit" class="small-btn">Save</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('toggle_active', user_id=person.id) }}">
+            <button type="submit" class="small-btn secondary">
+              {% if person.active %}✓ active{% else %}inactive{% endif %}
+            </button>
           </form>
         </td>
         <td>

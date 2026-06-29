@@ -51,7 +51,10 @@ and `LATE_GRACE_MINUTES` (e.g. `WORK_END=17:00`).
 ## Features
 
 - **Login / authentication** with `admin` and `employee` roles
-- **Employee management** + linking each employee to a device enrollment id
+- **Live "Today" board** — who's on-site, not arrived, checked out, offshore, or
+  late right now, with a headcount
+- **Employee management** + linking each employee to a device enrollment id;
+  mark accounts **active / inactive** (inactive ones drop out of attendance)
 - **Import users** — create employee accounts straight from the device roster
 - **Employee detail page** with manual **punch corrections** (add a forgotten
   scan; ignore a bad device scan so a re-sync won't restore it)

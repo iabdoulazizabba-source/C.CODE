@@ -41,6 +41,10 @@ class User(UserMixin, db.Model):
     # device's punches to this account. Null = not enrolled on a device.
     device_uid = db.Column(db.String(64), unique=True, nullable=True)
 
+    # Inactive users (e.g. the admin login, or staff who left) are excluded
+    # from attendance reports and the Today board.
+    active = db.Column(db.Boolean, nullable=False, default=True)
+
     punches = db.relationship(
         "AttendancePunch", backref="user", cascade="all, delete-orphan"
     )

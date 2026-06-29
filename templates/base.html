@@ -12,6 +12,9 @@
     {% if current_user.is_authenticated %}
     <nav>
       <a href="{{ url_for('dashboard') }}">Dashboard</a>
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('today') }}">Today</a>
+      {% endif %}
       <a href="{{ url_for('reports') }}">Reports</a>
       {% if current_user.is_admin %}
       <a href="{{ url_for('employees') }}">Employees</a>

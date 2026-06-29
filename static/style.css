@@ -151,6 +151,24 @@ table form { margin: 0; }
 }
 .btn-link:hover { background: #dde4f3; }
 
+/* Today board stat cards */
+.stat-row { display: flex; gap: 0.8rem; flex-wrap: wrap; margin-top: 0.6rem; }
+.stat {
+  flex: 1 1 110px;
+  background: #f8f9fc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  text-align: center;
+}
+.stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+.stat-label { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
+.stat-ok { background: #ebfbee; border-color: #c3e9cb; }
+.stat-warn { background: #fff7ed; border-color: #fcd9b6; }
+.stat-info { background: #e7f5ff; border-color: #c5e2ff; }
+.stat-late { background: #fff0f0; border-color: #ffd3d3; }
+.row-inactive td { color: var(--muted); }
+
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }
 .row-ignored td { color: var(--muted); text-decoration: line-through; }

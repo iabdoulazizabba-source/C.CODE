@@ -7,7 +7,7 @@ import pytest
 from app import create_app
 from device import FakeConnector, Punch, DeviceUser
 from models import Session
-from reporting import build_report
+from reporting import build_report, build_today
 from schedule import DEFAULT_SCHEDULE, Schedule
 from models import (
     AttendancePunch,
@@ -336,6 +336,71 @@ def test_reports_csv_download(client, app):
     assert "text/csv" in resp.content_type
     assert b"Net hours" in resp.data
     assert b"Kate" in resp.data
+
+
+def test_today_board_statuses(app):
+    with app.app_context():
+        monday = date(2026, 3, 2)
+        on = add_user("onsite", device_uid="90")
+        add_manual_punch(on, datetime(2026, 3, 2, 8, 5))   # one scan -> on site
+        out = add_user("doneuser", device_uid="91")
+        add_manual_punch(out, datetime(2026, 3, 2, 8, 0))
+        add_manual_punch(out, datetime(2026, 3, 2, 17, 0))  # two scans -> checked out
+        add_user("missing", device_uid="92")               # no scans -> not arrived
+        off = add_user("offsh", device_uid="93")
+        db.session.add(OffshoreMission(
+            user_id=off.id, start_date=date(2026, 3, 1), end_date=date(2026, 3, 5)))
+        db.session.commit()
+
+        users = [User.query.filter_by(username=u).first()
+                 for u in ("onsite", "doneuser", "missing", "offsh")]
+        board = build_today(users, today=monday)
+        status = {r.name: r.status for r in board.rows}
+        assert status["Onsite"] == "on_site"
+        assert status["Doneuser"] == "checked_out"
+        assert status["Missing"] == "not_arrived"
+        assert status["Offsh"] == "offshore"
+        assert (board.on_site, board.checked_out, board.not_arrived,
+                board.offshore) == (1, 1, 1, 1)
+
+
+def test_today_board_weekend_has_no_absences(app):
+    with app.app_context():
+        add_user("nora", device_uid="94")
+        saturday = date(2026, 3, 7)
+        board = build_today([User.query.filter_by(username="nora").first()],
+                            today=saturday)
+        assert not board.is_workday
+        assert board.not_arrived == 0
+        assert board.rows == []
+
+
+def test_toggle_active_excludes_from_reports(client, app):
+    with app.app_context():
+        user = add_user("liam", device_uid="95")
+        uid = user.id
+    login(client)
+    client.post(f"/employees/{uid}/toggle-active", follow_redirects=True)
+    with app.app_context():
+        assert not User.query.filter_by(username="liam").first().active
+
+    # Inactive users drop out of the "all" population (only the admin, also
+    # inactive, remains), so there's nothing to report.
+    resp = client.get("/reports")
+    assert resp.status_code == 200
+    assert b"No employees to report" in resp.data
+    # ...but an admin can still pull up the former employee directly.
+    direct = client.get(f"/reports?employee={uid}")
+    assert b"Liam" in direct.data
+
+
+def test_today_route_renders(client, app):
+    with app.app_context():
+        add_user("mia", device_uid="96")
+    login(client)
+    resp = client.get("/today")
+    assert resp.status_code == 200
+    assert b"On site" in resp.data
 
 
 def test_add_punch_route_and_employee_detail(client, app):

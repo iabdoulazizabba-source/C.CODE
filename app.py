@@ -47,7 +47,7 @@ from models import (
     sync_from_device,
     utcnow,
 )
-from reporting import build_report
+from reporting import build_report, build_today
 from schedule import DEFAULT_SCHEDULE
 
 login_manager = LoginManager()
@@ -111,18 +111,27 @@ def _ensure_schema():
     from sqlalchemy import inspect, text
 
     inspector = inspect(db.engine)
-    existing = {c["name"] for c in inspector.get_columns("attendance_punch")}
-    additions = {
+    changed = False
+
+    punch_cols = {c["name"] for c in inspector.get_columns("attendance_punch")}
+    punch_additions = {
         "source": "ALTER TABLE attendance_punch "
                   "ADD COLUMN source VARCHAR(10) NOT NULL DEFAULT 'device'",
         "ignored": "ALTER TABLE attendance_punch "
                    "ADD COLUMN ignored BOOLEAN NOT NULL DEFAULT 0",
     }
-    changed = False
-    for column, ddl in additions.items():
-        if column not in existing:
+    for column, ddl in punch_additions.items():
+        if column not in punch_cols:
             db.session.execute(text(ddl))
             changed = True
+
+    user_cols = {c["name"] for c in inspector.get_columns("user")}
+    if "active" not in user_cols:
+        db.session.execute(
+            text('ALTER TABLE "user" ADD COLUMN active BOOLEAN NOT NULL DEFAULT 1')
+        )
+        changed = True
+
     if changed:
         db.session.commit()
 
@@ -135,7 +144,9 @@ def load_user(user_id):
 def _seed_admin():
     """Create a default admin on first run so you can log in."""
     if User.query.filter_by(role="admin").first() is None:
-        admin = User(username="admin", full_name="Administrator", role="admin")
+        # Management login, not a clocking employee -> inactive for attendance.
+        admin = User(username="admin", full_name="Administrator", role="admin",
+                     active=False)
         admin.set_password(os.environ.get("ADMIN_PASSWORD", "admin123"))
         db.session.add(admin)
         db.session.commit()
@@ -171,6 +182,13 @@ def register_routes(app):
             enrolled=current_user.device_uid is not None,
             last_sync=_last_sync,
         )
+
+    @app.route("/today")
+    @admin_required
+    def today():
+        people = User.query.filter_by(active=True).order_by(User.full_name).all()
+        board = build_today(people)
+        return render_template("today.html", board=board)
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -326,6 +344,18 @@ def register_routes(app):
             db.session.commit()
             _link_existing_punches(user)
             flash(f"Updated device ID for {user.full_name}.", "success")
+        return redirect(request.referrer or url_for("employees"))
+
+    @app.route("/employees/<int:user_id>/toggle-active", methods=["POST"])
+    @admin_required
+    def toggle_active(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            abort(404)
+        user.active = not user.active
+        db.session.commit()
+        state = "active" if user.active else "inactive"
+        flash(f"{user.full_name} is now {state}.", "success")
         return redirect(request.referrer or url_for("employees"))
 
     @app.route("/employees/<int:user_id>/delete", methods=["POST"])
@@ -542,7 +572,10 @@ def _report_people():
         person = db.session.get(User, emp_id)
         if person:
             return [person], emp_id
-    return User.query.order_by(User.full_name).all(), None
+    return (
+        User.query.filter_by(active=True).order_by(User.full_name).all(),
+        None,
+    )
 
 
 def _link_existing_punches(user):

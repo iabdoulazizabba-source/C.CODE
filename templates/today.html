@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Today{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Today — {{ board.day.strftime("%A, %d %b %Y") }}</h1>
+  {% if not board.is_workday %}
+  <p class="muted small">Not a scheduled workday — absences aren't counted.</p>
+  {% endif %}
+
+  <div class="stat-row">
+    <div class="stat stat-ok">
+      <div class="stat-num">{{ board.on_site }}</div><div class="stat-label">On site</div>
+    </div>
+    <div class="stat stat-warn">
+      <div class="stat-num">{{ board.not_arrived }}</div><div class="stat-label">Not arrived</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">{{ board.checked_out }}</div><div class="stat-label">Checked out</div>
+    </div>
+    <div class="stat stat-info">
+      <div class="stat-num">{{ board.offshore }}</div><div class="stat-label">Offshore</div>
+    </div>
+    <div class="stat stat-late">
+      <div class="stat-num">{{ board.late }}</div><div class="stat-label">Late today</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>People</h2>
+  {% if board.rows %}
+  <table>
+    <thead><tr><th>Employee</th><th>Status</th><th>In</th><th>Out</th><th>Net h</th></tr></thead>
+    <tbody>
+      {% for r in board.rows %}
+      <tr>
+        <td><a href="{{ url_for('employee_detail', user_id=r.user_id) }}">{{ r.name }}</a></td>
+        <td>
+          {% if r.status == 'on_site' %}<span class="badge badge-ot">on site</span>
+          {% elif r.status == 'not_arrived' %}<span class="badge badge-late">not arrived</span>
+          {% elif r.status == 'offshore' %}<span class="badge badge-offshore">offshore</span>
+          {% else %}<span class="badge badge-open">checked out</span>{% endif %}
+          {% if r.late %}<span class="badge badge-late">late</span>{% endif %}
+        </td>
+        <td>{{ r.first_in.strftime("%H:%M") if r.first_in else "—" }}</td>
+        <td>{{ r.last_out.strftime("%H:%M") if r.last_out else "—" }}</td>
+        <td>{% if r.net_hours %}{{ "%.2f"|format(r.net_hours) }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No active employees to show.</p>
+  {% endif %}
+</div>
+{% endblock %}
