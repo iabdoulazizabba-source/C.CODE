@@ -36,17 +36,24 @@ A day with only a single scan is shown as an **open / incomplete** session (no
 clock-out) rather than counted as zero hours. Raw punches are stored verbatim,
 so this rule can be refined later without re-reading the device.
 
-### Work schedule & flags
+### Work schedule, hours & overtime
 
-The default schedule is **Mon–Fri, 08:00–18:00, lunch 12:00–14:00** → a full day
-is **8 net hours**. Reports flag each session:
+The default schedule is **Mon–Fri, 08:00–18:00, lunch 12:00–14:00** → a full
+weekday is **8 regular hours**. Pay (net) hours = regular + overtime, where
+**overtime** is:
 
-- **late** — first scan later than 08:00 + grace (default 10 min)
-- **left early** — last scan before 18:00 − grace
-- **overtime** — net hours beyond the 8h day
+- hours worked **before 08:00**,
+- hours worked **after 18:00**,
+- the **lunch break if it was worked** — detected when a scan falls inside
+  12:00–14:00 (otherwise the break is unpaid and deducted), and
+- a flat **10 hours for any weekend day** (Sat/Sun) the employee is present.
+
+Reports also flag each weekday: **late** (first scan after 08:00 + grace,
+default 10 min) and **left early** (last scan before 18:00 − grace). Weekend
+days are labelled separately.
 
 Override the schedule with `WORK_START`, `WORK_END`, `BREAK_START`, `BREAK_END`,
-and `LATE_GRACE_MINUTES` (e.g. `WORK_END=17:00`).
+`LATE_GRACE_MINUTES`, and `WEEKEND_CREDIT_HOURS` (e.g. `WORK_END=17:00`).
 
 ## Features
 

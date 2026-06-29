@@ -43,6 +43,7 @@ class EmployeeReport:
     late_days: int = 0
     absent_days: int = 0
     offshore_days: int = 0
+    weekend_days: int = 0
 
 
 def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
@@ -61,7 +62,17 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
         day = start
         while day <= cutoff:
             session = sessions.get(day)
-            if session is not None and session.is_open:
+            is_weekend = not schedule.is_workday(day)
+            if session is not None and is_weekend:
+                # Weekend present -> flat extra credit, all overtime.
+                report.days.append(DayRecord(
+                    day, "weekend", session.clock_in, session.clock_out,
+                    net_hours=session.net_hours, overtime=session.overtime_hours,
+                ))
+                report.weekend_days += 1
+                report.net_hours += session.net_hours
+                report.overtime += session.overtime_hours
+            elif session is not None and session.is_open:
                 report.days.append(DayRecord(day, "incomplete", session.clock_in,
                                              None, late=session.is_late))
                 report.incomplete_days += 1

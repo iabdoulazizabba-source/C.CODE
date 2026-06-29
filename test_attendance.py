@@ -243,7 +243,7 @@ def test_schedule_net_hours_deducts_break():
     assert half == 4.0  # 5h span - 1h break overlap (12:00-13:00)
 
 
-def test_schedule_flags_late_early_overtime():
+def test_schedule_late_and_early_flags():
     s = Schedule()
     assert not s.is_late(datetime(2026, 1, 5, 8, 0))     # exactly on time
     assert not s.is_late(datetime(2026, 1, 5, 8, 10))    # within grace
@@ -251,15 +251,36 @@ def test_schedule_flags_late_early_overtime():
     assert s.lateness_minutes(datetime(2026, 1, 5, 8, 30)) == 20  # past 08:10
     assert s.is_early_leave(datetime(2026, 1, 5, 17, 0))
     assert not s.is_early_leave(datetime(2026, 1, 5, 18, 0))
-    assert s.overtime_hours(9.0) == 1.0
-    assert s.overtime_hours(8.0) == 0.0
+
+
+def test_compute_hours_weekday_early_late_and_break():
+    s = Schedule()
+    # Monday, normal day with lunch taken -> 8 regular, no extra.
+    b = s.compute_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0))
+    assert (b.regular, b.extra, b.total) == (8.0, 0.0, 8.0)
+    # Early start + late finish -> 2h before + 2h after as overtime.
+    b2 = s.compute_hours(datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 20, 0))
+    assert b2.early == 2.0 and b2.late == 2.0
+    assert (b2.regular, b2.total) == (8.0, 12.0)
+    # A scan inside 12-14 means the lunch was worked -> counts as extra.
+    worked = [datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 13, 0),
+              datetime(2026, 1, 5, 18, 0)]
+    b3 = s.compute_hours(worked[0], worked[-1], scan_times=worked)
+    assert b3.break_worked == 2.0 and b3.total == 10.0
+
+
+def test_compute_hours_weekend_flat_credit():
+    s = Schedule()
+    # Saturday 2026-01-03: present for any span -> flat 10h, all overtime.
+    b = s.compute_hours(datetime(2026, 1, 3, 9, 0), datetime(2026, 1, 3, 13, 0))
+    assert (b.weekend, b.regular, b.extra, b.total) == (10.0, 0.0, 10.0, 10.0)
 
 
 def test_session_exposes_schedule_flags():
     late_long = Session(datetime(2026, 1, 5, 8, 30), datetime(2026, 1, 5, 19, 0))
     assert late_long.is_late
-    assert late_long.net_hours == 8.5      # 10.5h span - 2h break
-    assert late_long.overtime_hours == 0.5
+    assert late_long.net_hours == 8.5      # 7.5 regular + 1h after 18:00
+    assert late_long.overtime_hours == 1.0
     on_time = Session(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 16, 0))
     assert not on_time.is_late
     assert on_time.is_early_leave          # left before 18:00
@@ -305,6 +326,21 @@ def test_report_flags_present_absent_offshore(app):
         statuses = {d.day.day: d.status for d in rep.days}
         assert statuses[4] == "absent"
         assert statuses[5] == "offshore"
+
+
+def test_report_weekend_credits_ten_hours(app):
+    with app.app_context():
+        user = add_user("owen", device_uid="83")
+        # Saturday 2026-03-07: present (two scans).
+        add_manual_punch(user, datetime(2026, 3, 7, 9, 0))
+        add_manual_punch(user, datetime(2026, 3, 7, 12, 0))
+        owen = User.query.filter_by(username="owen").first()
+        rep = build_report([owen], date(2026, 3, 7), date(2026, 3, 8),
+                           today=date(2026, 3, 31))[0]
+        assert rep.weekend_days == 1
+        assert rep.net_hours == 10.0     # flat weekend credit
+        assert rep.overtime == 10.0
+        assert {d.day.day: d.status for d in rep.days}[7] == "weekend"
 
 
 def test_report_skips_weekends_and_future(app):

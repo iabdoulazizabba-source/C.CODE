@@ -147,14 +147,18 @@ class OffshoreMission(db.Model):
 class Session:
     """A derived clock-in / clock-out pair (not stored in the DB).
 
-    ``hours`` is the raw on-site span; ``net_hours`` deducts the scheduled
-    lunch break and is the figure used for pay. Flags (late, early leave,
-    overtime) come from the active work schedule.
+    ``hours`` is the raw on-site span. ``net_hours`` is the paid total
+    (regular in-window hours plus extra: pre-start, post-end, worked lunch,
+    or a flat weekend credit). ``scan_times`` are the day's de-duplicated
+    scans, used to tell whether the lunch break was worked.
     """
 
-    def __init__(self, clock_in, clock_out=None):
+    def __init__(self, clock_in, clock_out=None, scan_times=None):
         self.clock_in = clock_in
         self.clock_out = clock_out
+        self.scan_times = scan_times or [
+            t for t in (clock_in, clock_out) if t is not None
+        ]
 
     @property
     def is_open(self):
@@ -165,32 +169,54 @@ class Session:
         return self.clock_in.date()
 
     @property
+    def is_weekend(self):
+        return not DEFAULT_SCHEDULE.is_workday(self.date)
+
+    @property
     def hours(self):
         if self.clock_out is None:
             return 0.0
         return round((self.clock_out - self.clock_in).total_seconds() / 3600, 2)
 
     @property
+    def breakdown(self):
+        return DEFAULT_SCHEDULE.compute_hours(
+            self.clock_in, self.clock_out, self.scan_times
+        )
+
+    @property
     def net_hours(self):
-        if self.clock_out is None:
-            return 0.0
-        return DEFAULT_SCHEDULE.net_hours(self.clock_in, self.clock_out)
+        return self.breakdown.total
+
+    @property
+    def regular_hours(self):
+        return self.breakdown.regular
 
     @property
     def overtime_hours(self):
-        return DEFAULT_SCHEDULE.overtime_hours(self.net_hours)
+        return self.breakdown.extra
+
+    @property
+    def worked_break(self):
+        return self.breakdown.break_worked > 0
 
     @property
     def is_late(self):
-        return DEFAULT_SCHEDULE.is_late(self.clock_in)
+        return (not self.is_weekend) and DEFAULT_SCHEDULE.is_late(self.clock_in)
 
     @property
     def lateness_minutes(self):
+        if self.is_weekend:
+            return 0
         return DEFAULT_SCHEDULE.lateness_minutes(self.clock_in)
 
     @property
     def is_early_leave(self):
-        return (not self.is_open) and DEFAULT_SCHEDULE.is_early_leave(self.clock_out)
+        return (
+            not self.is_open
+            and not self.is_weekend
+            and DEFAULT_SCHEDULE.is_early_leave(self.clock_out)
+        )
 
 
 def dedupe_times(times, window_minutes=DEFAULT_DEDUP_MINUTES):
@@ -219,10 +245,8 @@ def build_sessions(punches, dedup_minutes=DEFAULT_DEDUP_MINUTES):
         times = dedupe_times(by_day[day], dedup_minutes)
         if not times:
             continue
-        if len(times) == 1:
-            sessions.append(Session(times[0], None))  # only one scan that day
-        else:
-            sessions.append(Session(times[0], times[-1]))
+        clock_out = times[-1] if len(times) > 1 else None
+        sessions.append(Session(times[0], clock_out, scan_times=times))
     sessions.reverse()
     return sessions
 

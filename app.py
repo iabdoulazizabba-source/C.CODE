@@ -529,13 +529,13 @@ def register_routes(app):
                     ])
         else:
             writer.writerow(["Employee", "Net hours", "Overtime", "Present days",
-                             "Incomplete", "Late days", "Absent days",
-                             "Offshore days"])
+                             "Weekend days", "Incomplete", "Late days",
+                             "Absent days", "Offshore days"])
             for rep in reports:
                 writer.writerow([
                     rep.name, f"{rep.net_hours:.2f}", f"{rep.overtime:.2f}",
-                    rep.present_days, rep.incomplete_days, rep.late_days,
-                    rep.absent_days, rep.offshore_days,
+                    rep.present_days, rep.weekend_days, rep.incomplete_days,
+                    rep.late_days, rep.absent_days, rep.offshore_days,
                 ])
 
         filename = f"timesheet_{start.isoformat()}_{end.isoformat()}_{kind}.csv"

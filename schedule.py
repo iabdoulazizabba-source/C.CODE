@@ -22,6 +22,25 @@ def _mins(t):
     return t.hour * 60 + t.minute
 
 
+@dataclass
+class HoursBreakdown:
+    """How a single day's worked hours split into regular vs extra."""
+
+    regular: float = 0.0       # in-window weekday hours (08-12, 14-18), <= 8
+    early: float = 0.0         # worked before the start time
+    break_worked: float = 0.0  # worked through the 12-14 lunch break
+    late: float = 0.0          # worked after the end time
+    weekend: float = 0.0       # flat credit for a Sat/Sun present
+
+    @property
+    def extra(self):
+        return round(self.early + self.break_worked + self.late + self.weekend, 2)
+
+    @property
+    def total(self):
+        return round(self.regular + self.extra, 2)
+
+
 @dataclass(frozen=True)
 class Schedule:
     work_days: frozenset = frozenset({0, 1, 2, 3, 4})  # Mon=0 .. Sun=6
@@ -30,6 +49,7 @@ class Schedule:
     break_start: time = time(12, 0)
     break_end: time = time(14, 0)
     late_grace_minutes: int = 10
+    weekend_credit_hours: float = 10.0  # flat extra for a Sat/Sun present
 
     # --- day classification ---
     def is_workday(self, day):
@@ -41,24 +61,57 @@ class Schedule:
 
     @property
     def expected_hours(self):
-        """Net hours in a full scheduled day (gross span minus the break)."""
+        """Regular hours in a full scheduled day (window minus the break)."""
         gross = (_mins(self.end) - _mins(self.start)) / 60
         return round(gross - self.break_hours, 2)
 
     # --- hours ---
-    def break_overlap_hours(self, start_dt, end_dt):
-        """Hours of the lunch break that fall inside [start_dt, end_dt]."""
-        b_start = datetime.combine(start_dt.date(), self.break_start)
-        b_end = datetime.combine(start_dt.date(), self.break_end)
-        overlap = (min(end_dt, b_end) - max(start_dt, b_start)).total_seconds()
-        return max(0.0, overlap / 3600)
+    @staticmethod
+    def _overlap(start_dt, end_dt, win_start, win_end):
+        secs = (min(end_dt, win_end) - max(start_dt, win_start)).total_seconds()
+        return max(0.0, secs / 3600)
 
-    def net_hours(self, start_dt, end_dt):
-        gross = (end_dt - start_dt).total_seconds() / 3600
-        return round(max(0.0, gross - self.break_overlap_hours(start_dt, end_dt)), 2)
+    def compute_hours(self, clock_in, clock_out, scan_times=None):
+        """Split a day's attendance into a :class:`HoursBreakdown`.
 
-    def overtime_hours(self, net):
-        return round(max(0.0, net - self.expected_hours), 2)
+        Weekends (non-workdays) earn a flat ``weekend_credit_hours`` when the
+        person is present. On weekdays, regular hours are the in-window time
+        (08-12 and 14-18); extra hours are time before the start, time after
+        the end, and the lunch break *if it was worked* — detected by a scan
+        falling inside the 12-14 window.
+        """
+        day = clock_in.date()
+        if not self.is_workday(day):
+            return HoursBreakdown(weekend=round(float(self.weekend_credit_hours), 2))
+        if clock_out is None:
+            return HoursBreakdown()  # single scan, incomplete
+
+        def at(t):
+            return datetime.combine(day, t)
+
+        regular = round(
+            self._overlap(clock_in, clock_out, at(self.start), at(self.break_start))
+            + self._overlap(clock_in, clock_out, at(self.break_end), at(self.end)),
+            2,
+        )
+        early = round(self._overlap(clock_in, clock_out, at(time(0, 0)), at(self.start)), 2)
+        late = round((clock_out - max(clock_in, at(self.end))).total_seconds() / 3600, 2)
+        late = max(0.0, late)
+
+        worked_break = bool(scan_times) and any(
+            self.break_start <= t.time() < self.break_end for t in scan_times
+        )
+        break_worked = (
+            round(self._overlap(clock_in, clock_out, at(self.break_start),
+                                at(self.break_end)), 2)
+            if worked_break else 0.0
+        )
+        return HoursBreakdown(regular=regular, early=early,
+                              break_worked=break_worked, late=late)
+
+    def net_hours(self, start_dt, end_dt, scan_times=None):
+        """Total paid hours for the day (regular + extra)."""
+        return self.compute_hours(start_dt, end_dt, scan_times).total
 
     # --- flags ---
     def _late_limit(self, day):
@@ -88,4 +141,5 @@ DEFAULT_SCHEDULE = Schedule(
     break_start=_parse_time(os.environ.get("BREAK_START"), time(12, 0)),
     break_end=_parse_time(os.environ.get("BREAK_END"), time(14, 0)),
     late_grace_minutes=int(os.environ.get("LATE_GRACE_MINUTES", "10")),
+    weekend_credit_hours=float(os.environ.get("WEEKEND_CREDIT_HOURS", "10")),
 )
