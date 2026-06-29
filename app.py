@@ -170,6 +170,20 @@ def admin_required(view):
 
 
 def register_routes(app):
+    @app.context_processor
+    def inject_brand():
+        # Prefer a real uploaded logo.png; fall back to the bundled emblem.
+        png = os.path.join(app.static_folder, "logo.png")
+        return {
+            "brand_logo": "logo.png" if os.path.exists(png) else "logo.svg",
+            "company_name": os.environ.get(
+                "COMPANY_NAME", "PESHAUD MARITIME INTERNATIONAL"
+            ),
+            "fleet": os.environ.get(
+                "FLEET", "DAMEN Fast Crew Supplier · CB19 — Via Maris Shipyard"
+            ),
+        }
+
     @app.route("/")
     @login_required
     def dashboard():

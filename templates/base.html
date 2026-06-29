@@ -3,12 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Time &amp; Attendance{% endblock %}</title>
+  <title>{% block title %}Time &amp; Attendance{% endblock %} · {{ company_name }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="{{ url_for('dashboard') }}">⏱ Time &amp; Attendance</a>
+    <a class="brand" href="{{ url_for('dashboard') }}">
+      <img class="brand-logo" src="{{ url_for('static', filename=brand_logo) }}"
+           alt="{{ company_name }}">
+      <span class="brand-text">
+        <span class="brand-name">{{ company_name }}</span>
+        <span class="brand-sub">Time &amp; Attendance</span>
+      </span>
+    </a>
     {% if current_user.is_authenticated %}
     <nav>
       <a href="{{ url_for('dashboard') }}">Dashboard</a>
@@ -35,5 +43,9 @@
 
     {% block content %}{% endblock %}
   </main>
+
+  <footer class="site-footer">
+    <span class="anchor">⚓</span> {{ company_name }} &middot; Fleet: {{ fleet }}
+  </footer>
 </body>
 </html>
