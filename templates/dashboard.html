@@ -4,43 +4,44 @@
 <div class="card">
   <h1>Welcome, {{ current_user.full_name }}</h1>
 
-  {% if open_entry %}
-    <p class="status status-in">
-      Clocked in since {{ open_entry.clock_in.strftime("%Y-%m-%d %H:%M UTC") }}
+  {% if not enrolled %}
+    <p class="status status-out">
+      You are not linked to a device enrollment ID yet, so no punches will
+      appear. Ask an admin to set your device ID.
     </p>
-    <form method="post" action="{{ url_for('clock_out') }}">
-      <button type="submit" class="danger">Clock out</button>
-    </form>
+  {% elif is_clocked_in %}
+    <p class="status status-in">● Currently clocked in (per the device).</p>
   {% else %}
-    <p class="status status-out">You are currently clocked out.</p>
-    <form method="post" action="{{ url_for('clock_in') }}">
-      <button type="submit">Clock in</button>
-    </form>
+    <p class="status status-out">○ Currently clocked out.</p>
   {% endif %}
+
+  <p class="muted small">
+    Attendance is read from the terminal. Times update after each device sync.
+  </p>
 </div>
 
 <div class="card">
-  <h2>Recent activity</h2>
-  {% if recent %}
+  <h2>Recent work sessions</h2>
+  {% if sessions %}
   <table>
     <thead>
       <tr><th>Clock in</th><th>Clock out</th><th>Hours</th></tr>
     </thead>
     <tbody>
-      {% for entry in recent %}
+      {% for s in sessions %}
       <tr>
-        <td>{{ entry.clock_in.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ s.clock_in.strftime("%Y-%m-%d %H:%M") }}</td>
         <td>
-          {% if entry.is_open %}<em>in progress</em>
-          {% else %}{{ entry.clock_out.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+          {% if s.is_open %}<em>in progress</em>
+          {% else %}{{ s.clock_out.strftime("%Y-%m-%d %H:%M") }}{% endif %}
         </td>
-        <td>{{ "%.2f"|format(entry.hours) }}</td>
+        <td>{{ "%.2f"|format(s.hours) }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No activity yet. Clock in to get started.</p>
+  <p class="muted">No punches recorded yet.</p>
   {% endif %}
 </div>
 {% endblock %}

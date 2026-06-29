@@ -3,6 +3,7 @@
 {% block content %}
 <div class="card">
   <h1>Timesheet report</h1>
+  <p class="muted small">Derived from device punches. Open sessions are excluded.</p>
 
   <h2>Total hours</h2>
   {% if totals %}
@@ -15,30 +16,30 @@
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No completed time entries yet.</p>
+  <p class="muted">No completed work sessions yet.</p>
   {% endif %}
 </div>
 
 <div class="card">
-  <h2>All entries</h2>
-  {% if entries %}
+  <h2>All sessions</h2>
+  {% if rows %}
   <table>
     <thead>
       <tr><th>Employee</th><th>Clock in</th><th>Clock out</th><th>Hours</th></tr>
     </thead>
     <tbody>
-      {% for entry in entries %}
+      {% for name, s in rows %}
       <tr>
-        <td>{{ entry.user.full_name }}</td>
-        <td>{{ entry.clock_in.strftime("%Y-%m-%d %H:%M") }}</td>
-        <td>{{ entry.clock_out.strftime("%Y-%m-%d %H:%M") }}</td>
-        <td>{{ "%.2f"|format(entry.hours) }}</td>
+        <td>{{ name }}</td>
+        <td>{{ s.clock_in.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ s.clock_out.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ "%.2f"|format(s.hours) }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No completed time entries yet.</p>
+  <p class="muted">No completed work sessions yet.</p>
   {% endif %}
 </div>
 {% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Device{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Attendance device</h1>
+
+  <table class="kv">
+    <tr><th>Driver</th><td>{{ driver }}</td></tr>
+    <tr><th>Address</th><td>{{ host or "—" }}{% if host %}:{{ port }}{% endif %}</td></tr>
+    <tr>
+      <th>Status</th>
+      <td>
+        {% if not configured %}
+          <span class="status-out">not configured</span>
+        {% elif online %}
+          <span class="status-in">● online</span>
+        {% else %}
+          <span class="status-out">○ unreachable</span>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>Last sync</th>
+      <td>
+        {% if last_sync.time %}
+          {{ last_sync.time.strftime("%Y-%m-%d %H:%M:%S UTC") }}
+          {% if last_sync.result and not last_sync.result.ok %}
+            — <span class="status-out">{{ last_sync.result.error }}</span>
+          {% elif last_sync.result %}
+            — {{ last_sync.result.imported }} imported,
+            {{ last_sync.result.skipped }} already had
+          {% endif %}
+        {% else %}
+          never
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <form method="post" action="{{ url_for('sync') }}">
+    <button type="submit">Sync now</button>
+  </form>
+</div>
+
+{% if unmapped %}
+<div class="card">
+  <h2>Unmapped device IDs</h2>
+  <p class="muted small">
+    These enrollment IDs have punches but aren't linked to any employee.
+    Set the matching <strong>Device ID</strong> on the
+    <a href="{{ url_for('employees') }}">Employees</a> page.
+  </p>
+  <table>
+    <thead><tr><th>Device ID</th><th>Punches</th></tr></thead>
+    <tbody>
+      {% for uid, count in unmapped %}
+      <tr><td>{{ uid }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Users enrolled on the device</h2>
+  {% if device_error %}
+    <p class="status-out">{{ device_error }}</p>
+  {% elif device_users %}
+  <table>
+    <thead><tr><th>Device ID</th><th>Name on device</th></tr></thead>
+    <tbody>
+      {% for u in device_users %}
+      <tr><td>{{ u.device_uid }}</td><td>{{ u.name }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">
+      {% if online %}No users read from the device.
+      {% else %}Connect to the device to list enrolled users.{% endif %}
+    </p>
+  {% endif %}
+</div>
+{% endblock %}
