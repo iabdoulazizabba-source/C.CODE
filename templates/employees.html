@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Employees{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Employees</h1>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for person in people %}
+      <tr>
+        <td>{{ person.full_name }}</td>
+        <td>{{ person.username }}</td>
+        <td><span class="badge badge-{{ person.role }}">{{ person.role }}</span></td>
+        <td>
+          {% if person.id != current_user.id %}
+          <form method="post"
+                action="{{ url_for('delete_employee', user_id=person.id) }}"
+                onsubmit="return confirm('Remove {{ person.full_name }}?');">
+            <button type="submit" class="link-danger">Remove</button>
+          </form>
+          {% else %}
+          <span class="muted">you</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Add employee</h2>
+  <form method="post" action="{{ url_for('add_employee') }}" class="grid-form">
+    <label>Full name
+      <input type="text" name="full_name" required>
+    </label>
+    <label>Username
+      <input type="text" name="username" required>
+    </label>
+    <label>Password
+      <input type="password" name="password" required>
+    </label>
+    <label>Role
+      <select name="role">
+        <option value="employee">employee</option>
+        <option value="admin">admin</option>
+      </select>
+    </label>
+    <button type="submit">Add</button>
+  </form>
+</div>
+{% endblock %}

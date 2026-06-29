@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Welcome, {{ current_user.full_name }}</h1>
+
+  {% if open_entry %}
+    <p class="status status-in">
+      Clocked in since {{ open_entry.clock_in.strftime("%Y-%m-%d %H:%M UTC") }}
+    </p>
+    <form method="post" action="{{ url_for('clock_out') }}">
+      <button type="submit" class="danger">Clock out</button>
+    </form>
+  {% else %}
+    <p class="status status-out">You are currently clocked out.</p>
+    <form method="post" action="{{ url_for('clock_in') }}">
+      <button type="submit">Clock in</button>
+    </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recent activity</h2>
+  {% if recent %}
+  <table>
+    <thead>
+      <tr><th>Clock in</th><th>Clock out</th><th>Hours</th></tr>
+    </thead>
+    <tbody>
+      {% for entry in recent %}
+      <tr>
+        <td>{{ entry.clock_in.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          {% if entry.is_open %}<em>in progress</em>
+          {% else %}{{ entry.clock_out.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+        </td>
+        <td>{{ "%.2f"|format(entry.hours) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No activity yet. Clock in to get started.</p>
+  {% endif %}
+</div>
+{% endblock %}
