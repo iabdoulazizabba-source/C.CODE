@@ -8,7 +8,9 @@ from app import create_app
 from device import FakeConnector, Punch, DeviceUser
 from models import (
     AttendancePunch,
+    OffshoreMission,
     User,
+    add_manual_punch,
     build_sessions,
     db,
     import_device_users,
@@ -197,6 +199,71 @@ def test_sync_reports_error_when_device_unreachable(app):
         result = sync_from_device(FakeConnector(reachable=False))
         assert not result.ok
         assert "unreachable" in result.error.lower()
+
+
+# --- corrections & offshore missions --------------------------------------
+
+def test_manual_punch_creates_session(app):
+    with app.app_context():
+        user = add_user("erin", device_uid="50")
+        add_manual_punch(user, datetime(2026, 2, 2, 8, 0))
+        add_manual_punch(user, datetime(2026, 2, 2, 16, 0))
+        erin = User.query.filter_by(username="erin").first()
+        assert erin.sessions()[0].hours == 8.0
+        assert all(p.source == "manual" for p in erin.punches)
+
+
+def test_ignored_punch_excluded_from_hours(app):
+    with app.app_context():
+        user = add_user("frank", device_uid="60")
+        sync_from_device(FakeConnector(punches=[
+            Punch("60", datetime(2026, 2, 3, 8, 0)),
+            Punch("60", datetime(2026, 2, 3, 18, 0)),
+        ]))
+        frank = User.query.filter_by(username="frank").first()
+        assert frank.sessions()[0].hours == 10.0
+
+        # Ignore the late "out" scan -> only one active scan that day -> open.
+        late = max(frank.punches, key=lambda p: p.timestamp)
+        late.ignored = True
+        db.session.commit()
+        sess = User.query.filter_by(username="frank").first().sessions()
+        assert sess[0].is_open
+
+
+def test_offshore_mission_days_and_coverage(app):
+    with app.app_context():
+        user = add_user("gwen")
+        db.session.add(OffshoreMission(
+            user_id=user.id,
+            start_date=date(2026, 3, 1),
+            end_date=date(2026, 3, 10),
+            note="rig",
+        ))
+        db.session.commit()
+        gwen = User.query.filter_by(username="gwen").first()
+        assert gwen.offshore_days == 10
+        assert gwen.is_offshore_on(date(2026, 3, 5))
+        assert not gwen.is_offshore_on(date(2026, 3, 11))
+
+
+def test_add_punch_route_and_employee_detail(client, app):
+    with app.app_context():
+        user = add_user("helen", device_uid="70")
+        uid = user.id
+    login(client)
+
+    resp = client.post(
+        f"/employees/{uid}/punches/add",
+        data={"date": "2026-02-05", "time": "09:00"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"Added scan" in resp.data
+
+    detail = client.get(f"/employees/{uid}")
+    assert detail.status_code == 200
+    assert b"helen" in detail.data.lower()
 
 
 # --- auth / access control -------------------------------------------------

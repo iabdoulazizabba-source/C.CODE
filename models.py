@@ -42,6 +42,12 @@ class User(UserMixin, db.Model):
     punches = db.relationship(
         "AttendancePunch", backref="user", cascade="all, delete-orphan"
     )
+    missions = db.relationship(
+        "OffshoreMission",
+        backref="user",
+        cascade="all, delete-orphan",
+        order_by="OffshoreMission.start_date.desc()",
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -54,10 +60,20 @@ class User(UserMixin, db.Model):
         return self.role == "admin"
 
     def sessions(self):
-        """Daily work sessions for this user (most recent first)."""
-        return build_sessions(
-            sorted(self.punches, key=lambda p: p.timestamp)
-        )
+        """Daily work sessions for this user (most recent first).
+
+        Punches flagged ``ignored`` (corrected away by an admin) are skipped.
+        """
+        active = [p for p in self.punches if not p.ignored]
+        return build_sessions(sorted(active, key=lambda p: p.timestamp))
+
+    @property
+    def offshore_days(self):
+        """Total days marked as offshore missions for this user."""
+        return sum(m.days for m in self.missions)
+
+    def is_offshore_on(self, day):
+        return any(m.covers(day) for m in self.missions)
 
     @property
     def last_punch_at(self):
@@ -91,6 +107,35 @@ class AttendancePunch(db.Model):
     timestamp = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.Integer, nullable=False, default=0)
     imported_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    # "device" (synced) or "manual" (added by an admin correction).
+    source = db.Column(db.String(10), nullable=False, default="device")
+    # Soft-delete: an admin marked this scan as bogus. Kept so a re-sync
+    # won't re-import it, but excluded from hours.
+    ignored = db.Column(db.Boolean, nullable=False, default=False)
+
+
+class OffshoreMission(db.Model):
+    """A date range an employee spent on an offshore mission.
+
+    Offshore days are counted as *days present* (not hours) and must not be
+    treated as absences when away from the terminal.
+    """
+
+    __tablename__ = "offshore_mission"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    note = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    @property
+    def days(self):
+        return (self.end_date - self.start_date).days + 1
+
+    def covers(self, day):
+        return self.start_date <= day <= self.end_date
 
 
 class Session:
@@ -254,3 +299,29 @@ def import_device_users(connector, default_password="changeme123"):
 
     db.session.commit()
     return created, skipped, None
+
+
+def add_manual_punch(user, when):
+    """Add an admin-entered scan for ``user`` at datetime ``when``.
+
+    Returns ``(punch, error)``; ``error`` is set if an identical scan
+    already exists. Manual punches don't collide with device de-dup because
+    they carry their own ``device_uid`` namespace when the user has none.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    device_uid = user.device_uid or f"manual-{user.id}"
+    punch = AttendancePunch(
+        device_uid=device_uid,
+        user_id=user.id,
+        timestamp=when,
+        status=0,
+        source="manual",
+    )
+    db.session.add(punch)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return None, "A scan already exists at that exact time."
+    return punch, None

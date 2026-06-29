@@ -40,6 +40,10 @@ so this rule can be refined later without re-reading the device.
 - **Login / authentication** with `admin` and `employee` roles
 - **Employee management** + linking each employee to a device enrollment id
 - **Import users** — create employee accounts straight from the device roster
+- **Employee detail page** with manual **punch corrections** (add a forgotten
+  scan; ignore a bad device scan so a re-sync won't restore it)
+- **Offshore missions** — mark date ranges an employee is offshore; counted as
+  days present (not hours) and never flagged as absences
 - **Device page**: connection status, enrolled users, unmapped IDs, manual sync
 - **Timesheet reports** derived from device punches (first-in / last-out, deduped)
 

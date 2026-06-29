@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ person.full_name }}{% endblock %}
+{% block content %}
+<div class="card">
+  <p class="muted small"><a href="{{ url_for('employees') }}">&larr; Employees</a></p>
+  <h1>{{ person.full_name }}</h1>
+  <table class="kv">
+    <tr><th>Username</th><td>{{ person.username }}</td></tr>
+    <tr><th>Role</th><td><span class="badge badge-{{ person.role }}">{{ person.role }}</span></td></tr>
+    <tr><th>Device ID</th><td>{{ person.device_uid or "—" }}</td></tr>
+    <tr><th>Offshore days</th><td>{{ person.offshore_days }}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Offshore missions</h2>
+  <p class="muted small">
+    Days on an offshore mission count as <strong>days present</strong> (not hours)
+    and are never flagged as absences.
+  </p>
+  {% if missions %}
+  <table>
+    <thead><tr><th>From</th><th>To</th><th>Days</th><th>Note</th><th></th></tr></thead>
+    <tbody>
+      {% for m in missions %}
+      <tr>
+        <td>{{ m.start_date }}</td>
+        <td>{{ m.end_date }}</td>
+        <td>{{ m.days }}</td>
+        <td>{{ m.note or "" }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_mission', mission_id=m.id) }}"
+                onsubmit="return confirm('Remove this mission?');">
+            <button type="submit" class="link-danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No offshore missions recorded.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('add_mission', user_id=person.id) }}"
+        class="grid-form" style="margin-top:1rem;">
+    <label>Start date <input type="date" name="start_date" required></label>
+    <label>End date <input type="date" name="end_date" required></label>
+    <label>Note <span class="muted">(optional)</span>
+      <input type="text" name="note" placeholder="e.g. FPSO Kribi rotation"></label>
+    <button type="submit">Add mission</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Work sessions</h2>
+  {% if sessions %}
+  <table>
+    <thead><tr><th>Date</th><th>First in</th><th>Last out</th><th>Hours</th></tr></thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td>{{ s.clock_in.strftime("%Y-%m-%d") }}</td>
+        <td>{{ s.clock_in.strftime("%H:%M") }}</td>
+        <td>{% if s.is_open %}<em>—</em>{% else %}{{ s.clock_out.strftime("%H:%M") }}{% endif %}</td>
+        <td>{{ "%.2f"|format(s.hours) }}{% if s.is_open %} <span class="muted small">(incomplete)</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No work sessions yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Scans &amp; corrections</h2>
+  <p class="muted small">
+    Add a scan a worker forgot, or remove a bad one. Device scans are
+    <em>ignored</em> (kept but not counted) so a re-sync won't bring them back;
+    manual scans are deleted outright.
+  </p>
+
+  <form method="post" action="{{ url_for('add_punch', user_id=person.id) }}"
+        class="inline-form" style="margin-bottom:1rem;">
+    <input type="date" name="date" required>
+    <input type="time" name="time" required>
+    <button type="submit" class="small-btn">Add scan</button>
+  </form>
+
+  {% if punches %}
+  <table>
+    <thead><tr><th>Timestamp</th><th>Source</th><th>State</th><th></th></tr></thead>
+    <tbody>
+      {% for p in punches %}
+      <tr {% if p.ignored %}class="row-ignored"{% endif %}>
+        <td>{{ p.timestamp.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ p.source }}</td>
+        <td>{% if p.ignored %}<span class="muted">ignored</span>{% else %}active{% endif %}</td>
+        <td>
+          {% if p.ignored %}
+          <form method="post" action="{{ url_for('restore_punch', punch_id=p.id) }}">
+            <button type="submit" class="small-btn secondary">Restore</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('remove_punch', punch_id=p.id) }}"
+                onsubmit="return confirm('Remove this scan?');">
+            <button type="submit" class="link-danger">Remove</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">Showing up to 60 most recent scans.</p>
+  {% else %}
+  <p class="muted">No scans recorded.</p>
+  {% endif %}
+</div>
+{% endblock %}

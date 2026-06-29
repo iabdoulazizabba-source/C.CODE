@@ -14,7 +14,7 @@
     <tbody>
       {% for person in people %}
       <tr>
-        <td>{{ person.full_name }}</td>
+        <td><a href="{{ url_for('employee_detail', user_id=person.id) }}">{{ person.full_name }}</a></td>
         <td>{{ person.username }}</td>
         <td><span class="badge badge-{{ person.role }}">{{ person.role }}</span></td>
         <td>

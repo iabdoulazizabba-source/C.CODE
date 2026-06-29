@@ -14,6 +14,7 @@ import os
 import threading
 import time
 from collections import defaultdict
+from datetime import datetime
 from functools import wraps
 
 from flask import (
@@ -36,7 +37,9 @@ from flask_login import (
 from device import DeviceError, connector_from_config
 from models import (
     AttendancePunch,
+    OffshoreMission,
     User,
+    add_manual_punch,
     db,
     import_device_users,
     sync_from_device,
@@ -87,10 +90,37 @@ def create_app(database_uri=None, connector=None, extra_config=None):
 
     with app.app_context():
         db.create_all()
+        _ensure_schema()
         _seed_admin()
 
     register_routes(app)
     return app
+
+
+def _ensure_schema():
+    """Add columns introduced after a DB was first created (SQLite-friendly).
+
+    create_all() makes new tables but never alters existing ones, so older
+    databases miss newer columns. We add them in place rather than forcing a
+    rebuild, keeping any data already synced.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    existing = {c["name"] for c in inspector.get_columns("attendance_punch")}
+    additions = {
+        "source": "ALTER TABLE attendance_punch "
+                  "ADD COLUMN source VARCHAR(10) NOT NULL DEFAULT 'device'",
+        "ignored": "ALTER TABLE attendance_punch "
+                   "ADD COLUMN ignored BOOLEAN NOT NULL DEFAULT 0",
+    }
+    changed = False
+    for column, ddl in additions.items():
+        if column not in existing:
+            db.session.execute(text(ddl))
+            changed = True
+    if changed:
+        db.session.commit()
 
 
 @login_manager.user_loader
@@ -307,6 +337,117 @@ def register_routes(app):
             db.session.commit()
             flash(f"Removed {user.full_name}.", "success")
         return redirect(url_for("employees"))
+
+    @app.route("/employees/<int:user_id>")
+    @admin_required
+    def employee_detail(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            abort(404)
+        punches = sorted(
+            user.punches, key=lambda p: p.timestamp, reverse=True
+        )[:60]
+        return render_template(
+            "employee_detail.html",
+            person=user,
+            sessions=user.sessions()[:30],
+            punches=punches,
+            missions=user.missions,
+        )
+
+    @app.route("/employees/<int:user_id>/punches/add", methods=["POST"])
+    @admin_required
+    def add_punch(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            abort(404)
+        raw = f"{request.form.get('date', '')} {request.form.get('time', '')}".strip()
+        try:
+            when = datetime.strptime(raw, "%Y-%m-%d %H:%M")
+        except ValueError:
+            flash("Enter a valid date and time.", "error")
+            return redirect(url_for("employee_detail", user_id=user.id))
+        _, error = add_manual_punch(user, when)
+        if error:
+            flash(error, "error")
+        else:
+            flash(f"Added scan at {when.strftime('%Y-%m-%d %H:%M')}.", "success")
+        return redirect(url_for("employee_detail", user_id=user.id))
+
+    @app.route("/punches/<int:punch_id>/remove", methods=["POST"])
+    @admin_required
+    def remove_punch(punch_id):
+        punch = db.session.get(AttendancePunch, punch_id)
+        if punch is None:
+            abort(404)
+        user_id = punch.user_id
+        if punch.source == "manual":
+            db.session.delete(punch)  # admin-entered: delete outright
+            flash("Manual scan deleted.", "success")
+        else:
+            punch.ignored = True  # device scan: soft-ignore so re-sync won't restore
+            flash("Device scan ignored (won't count toward hours).", "success")
+        db.session.commit()
+        return redirect(
+            request.referrer or url_for("employee_detail", user_id=user_id)
+        )
+
+    @app.route("/punches/<int:punch_id>/restore", methods=["POST"])
+    @admin_required
+    def restore_punch(punch_id):
+        punch = db.session.get(AttendancePunch, punch_id)
+        if punch is None:
+            abort(404)
+        punch.ignored = False
+        db.session.commit()
+        flash("Scan restored.", "success")
+        return redirect(
+            request.referrer or url_for("employee_detail", user_id=punch.user_id)
+        )
+
+    @app.route("/employees/<int:user_id>/missions/add", methods=["POST"])
+    @admin_required
+    def add_mission(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            abort(404)
+        try:
+            start = datetime.strptime(
+                request.form.get("start_date", ""), "%Y-%m-%d"
+            ).date()
+            end = datetime.strptime(
+                request.form.get("end_date", ""), "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            flash("Enter valid start and end dates.", "error")
+            return redirect(url_for("employee_detail", user_id=user.id))
+        if end < start:
+            flash("End date can't be before start date.", "error")
+        else:
+            db.session.add(
+                OffshoreMission(
+                    user_id=user.id,
+                    start_date=start,
+                    end_date=end,
+                    note=request.form.get("note", "").strip() or None,
+                )
+            )
+            db.session.commit()
+            flash(f"Offshore mission added ({(end - start).days + 1} day(s)).",
+                  "success")
+        return redirect(url_for("employee_detail", user_id=user.id))
+
+    @app.route("/missions/<int:mission_id>/delete", methods=["POST"])
+    @admin_required
+    def delete_mission(mission_id):
+        mission = db.session.get(OffshoreMission, mission_id)
+        if mission is None:
+            abort(404)
+        user_id = mission.user_id
+        db.session.delete(mission)
+        db.session.commit()
+        flash("Offshore mission removed.", "success")
+        return redirect(url_for("employee_detail", user_id=user_id))
 
     @app.route("/reports")
     @login_required
