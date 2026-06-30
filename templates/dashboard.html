@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Welcome, {{ current_user.full_name }}</h1>
+
+  {% if not enrolled %}
+    <p class="status status-out">
+      You are not linked to a device enrollment ID yet, so no punches will
+      appear. Ask an admin to set your device ID.
+    </p>
+  {% elif is_clocked_in %}
+    <p class="status status-in">● On site — scanned in today, no clock-out yet.</p>
+  {% else %}
+    <p class="status status-out">○ Not currently on site.</p>
+  {% endif %}
+
+  {% if enrolled %}
+  <p class="muted small">
+    Last scan:
+    {% if last_punch_at %}{{ last_punch_at.strftime("%Y-%m-%d %H:%M") }}
+    {% else %}none yet{% endif %}.
+    Attendance is read from the terminal and updates after each device sync.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recent work sessions</h2>
+  {% if sessions %}
+  <table>
+    <thead>
+      <tr><th>Clock in</th><th>Clock out</th><th>Net h</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td>{{ s.clock_in.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          {% if s.is_open %}<em>in progress</em>
+          {% else %}{{ s.clock_out.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+        </td>
+        <td>{{ "%.2f"|format(s.net_hours) }}</td>
+        <td>
+          {% if s.is_late %}<span class="badge badge-late">late</span>{% endif %}
+          {% if s.overtime_hours %}<span class="badge badge-ot">+{{ "%.1f"|format(s.overtime_hours) }}h</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No punches recorded yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

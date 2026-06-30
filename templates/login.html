@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<div class="login-hero {% if has_hero %}has-hero{% endif %}"
+     {% if has_hero %}style="background-image: linear-gradient(180deg, rgba(20,37,79,0.55), rgba(20,37,79,0.78)), url('{{ url_for('static', filename='hero.jpg') }}');"{% endif %}>
+  <div class="login-brand {% if has_hero %}on-hero{% endif %}">
+    {% if has_wordmark %}
+      <img class="login-wordmark" src="{{ url_for('static', filename='wordmark.png') }}" alt="{{ company_name }}">
+    {% else %}
+      <img src="{{ url_for('static', filename=brand_logo) }}" alt="{{ company_name }}">
+      <h1>{{ company_name }}</h1>
+    {% endif %}
+    <p class="login-tagline">Crew Time &amp; Attendance</p>
+    <p class="login-fleet">⚓ {{ fleet }}</p>
+  </div>
+
+  <div class="card narrow login-card">
+    <h2>Log in</h2>
+    <form method="post" action="{{ url_for('login') }}">
+      <label>Username
+        <input type="text" name="username" autofocus required>
+      </label>
+      <label>Password
+        <input type="password" name="password" required>
+      </label>
+      <button type="submit">Log in</button>
+    </form>
+    <p class="hint">Default admin: <code>admin</code> / <code>admin123</code></p>
+  </div>
+</div>
+{% endblock %}

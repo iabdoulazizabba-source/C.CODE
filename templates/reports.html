@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Timesheet report</h1>
+  <p class="muted small">
+    {{ start }} → {{ end }}. A full weekday is {{ "%.1f"|format(expected_hours) }}h
+    (08:00–18:00 minus the 12:00–14:00 lunch). <strong>Overtime</strong> = hours
+    before 08:00, after 18:00, a worked lunch, plus a flat 10h for any
+    <strong>weekend</strong> day worked. <strong>Absent</strong> = a weekday with
+    no scans and not offshore.
+  </p>
+
+  <form method="get" action="{{ url_for('reports') }}" class="filter-form">
+    <label>From <input type="date" name="start" value="{{ start.isoformat() }}"></label>
+    <label>To <input type="date" name="end" value="{{ end.isoformat() }}"></label>
+    {% if all_employees %}
+    <label>Employee
+      <select name="employee">
+        <option value="">All</option>
+        {% for e in all_employees %}
+        <option value="{{ e.id }}" {% if selected == e.id %}selected{% endif %}>{{ e.full_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <button type="submit">Apply</button>
+  </form>
+
+  <div class="btn-row" style="margin-top:0.8rem;">
+    <a class="btn-link" href="{{ url_for('reports_pdf', start=start.isoformat(), end=end.isoformat(), employee=selected or '') }}" target="_blank">🖨 PDF (print)</a>
+    <a class="btn-link" href="{{ url_for('reports_csv', kind='summary', start=start.isoformat(), end=end.isoformat(), employee=selected or '') }}">⬇ Summary CSV</a>
+    <a class="btn-link" href="{{ url_for('reports_csv', kind='days', start=start.isoformat(), end=end.isoformat(), employee=selected or '') }}">⬇ Detailed CSV</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Summary</h2>
+  {% if reports %}
+  <table>
+    <thead>
+      <tr>
+        <th>Employee</th><th>Position</th><th>Net h</th><th>OT h</th><th>Present</th>
+        <th>Weekend</th><th>Late</th><th>Absent</th><th>Offshore</th><th>Incomplete</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in reports %}
+      <tr>
+        <td><a href="{{ url_for('reports', start=start.isoformat(), end=end.isoformat(), employee=r.user_id) }}">{{ r.name }}</a></td>
+        <td>{{ r.position or "—" }}</td>
+        <td>{{ "%.2f"|format(r.net_hours) }}</td>
+        <td>{% if r.overtime %}<strong>{{ "%.2f"|format(r.overtime) }}</strong>{% else %}—{% endif %}</td>
+        <td>{{ r.present_days }}</td>
+        <td>{% if r.weekend_days %}<span class="badge badge-offshore">{{ r.weekend_days }}</span>{% else %}0{% endif %}</td>
+        <td>{% if r.late_days %}<span class="badge badge-late">{{ r.late_days }}</span>{% else %}0{% endif %}</td>
+        <td>{% if r.absent_days %}<span class="badge badge-late">{{ r.absent_days }}</span>{% else %}0{% endif %}</td>
+        <td>{{ r.offshore_days }}</td>
+        <td>{% if r.incomplete_days %}<span class="badge badge-open">{{ r.incomplete_days }}</span>{% else %}0{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No employees to report.</p>
+  {% endif %}
+</div>
+
+{% if detail %}
+<div class="card">
+  <h2>{{ detail.name }} — day by day</h2>
+  {% if detail.days %}
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Day</th><th>Status</th><th>In</th><th>Out</th><th>Net h</th><th>Flags</th></tr>
+    </thead>
+    <tbody>
+      {% for d in detail.days %}
+      <tr class="{% if d.status == 'absent' %}row-absent{% elif d.status in ('offshore', 'weekend') %}row-offshore{% endif %}">
+        <td>{{ d.day.isoformat() }}</td>
+        <td>{{ d.weekday }}</td>
+        <td>
+          {% if d.status == 'present' %}present
+          {% elif d.status == 'weekend' %}<span class="badge badge-ot">weekend</span>
+          {% elif d.status == 'offshore' %}<span class="badge badge-offshore">offshore</span>
+          {% elif d.status == 'absent' %}<span class="badge badge-late">absent</span>
+          {% else %}<span class="badge badge-open">incomplete</span>{% endif %}
+        </td>
+        <td>{{ d.clock_in.strftime("%H:%M") if d.clock_in else "—" }}</td>
+        <td>{{ d.clock_out.strftime("%H:%M") if d.clock_out else "—" }}</td>
+        <td>{{ "%.2f"|format(d.net_hours) }}</td>
+        <td>
+          {% if d.late %}<span class="badge badge-late">late</span>{% endif %}
+          {% if d.early %}<span class="badge badge-early">left early</span>{% endif %}
+          {% if d.lunch_worked %}<span class="badge badge-offshore">lunch</span>{% endif %}
+          {% if d.overtime %}<span class="badge badge-ot">+{{ "%.1f"|format(d.overtime) }}h OT</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No days in this range.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
