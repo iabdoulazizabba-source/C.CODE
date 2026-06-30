@@ -60,10 +60,13 @@
 
 <div class="card">
   <h2>Work sessions</h2>
-  <p class="muted small">Net hours deduct the 12:00–14:00 lunch break.</p>
+  <p class="muted small">
+    Net hours deduct the 12:00–14:00 lunch unless a weekday is marked
+    <strong>lunch worked</strong> (credits the 2h as overtime).
+  </p>
   {% if sessions %}
   <table>
-    <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Net h</th><th>Flags</th></tr></thead>
+    <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Net h</th><th>Lunch</th><th>Flags</th></tr></thead>
     <tbody>
       {% for s in sessions %}
       <tr>
@@ -71,6 +74,20 @@
         <td>{{ s.clock_in.strftime("%H:%M") }}</td>
         <td>{% if s.is_open %}<em>—</em>{% else %}{{ s.clock_out.strftime("%H:%M") }}{% endif %}</td>
         <td>{{ "%.2f"|format(s.net_hours) }}</td>
+        <td>
+          {% if s.is_weekend or s.is_open %}
+            <span class="muted">—</span>
+          {% else %}
+          <form method="post" action="{{ url_for('toggle_lunch', user_id=person.id) }}" class="inline-form">
+            <input type="hidden" name="date" value="{{ s.clock_in.strftime('%Y-%m-%d') }}">
+            {% if s.lunch_worked %}
+            <button type="submit" class="small-btn" title="Click to clear">✓ worked</button>
+            {% else %}
+            <button type="submit" class="small-btn secondary">mark worked</button>
+            {% endif %}
+          </form>
+          {% endif %}
+        </td>
         <td>
           {% if s.is_open %}<span class="badge badge-open">incomplete</span>{% endif %}
           {% if s.is_late %}<span class="badge badge-late" title="{{ s.lateness_minutes }} min late">late</span>{% endif %}

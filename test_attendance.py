@@ -304,11 +304,35 @@ def test_compute_hours_weekday_early_late_and_break():
     b2 = s.compute_hours(datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 20, 0))
     assert b2.early == 2.0 and b2.late == 2.0
     assert (b2.regular, b2.total) == (8.0, 12.0)
-    # A scan inside 12-14 means the lunch was worked -> counts as extra.
-    worked = [datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 13, 0),
-              datetime(2026, 1, 5, 18, 0)]
-    b3 = s.compute_hours(worked[0], worked[-1], scan_times=worked)
-    assert b3.break_worked == 2.0 and b3.total == 10.0
+    # Lunch is unpaid by default...
+    b3 = s.compute_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0))
+    assert b3.break_worked == 0.0 and b3.total == 8.0
+    # ...unless the day is marked as worked-through-lunch.
+    b4 = s.compute_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0),
+                         lunch_worked=True)
+    assert b4.break_worked == 2.0 and b4.total == 10.0
+
+
+def test_lunch_worked_marker_credits_break(client, app):
+    with app.app_context():
+        uid = add_user("sam", device_uid="43").id
+        sam = db.session.get(User, uid)
+        add_manual_punch(sam, datetime(2026, 3, 2, 8, 0))   # Monday
+        add_manual_punch(sam, datetime(2026, 3, 2, 18, 0))
+        assert sam.sessions()[0].net_hours == 8.0  # lunch deducted by default
+    login(client)
+
+    client.post(f"/employees/{uid}/lunch-worked",
+                data={"date": "2026-03-02"}, follow_redirects=True)
+    with app.app_context():
+        s = db.session.get(User, uid).sessions()[0]
+        assert s.lunch_worked and s.net_hours == 10.0 and s.overtime_hours == 2.0
+
+    # Toggling again clears it.
+    client.post(f"/employees/{uid}/lunch-worked",
+                data={"date": "2026-03-02"}, follow_redirects=True)
+    with app.app_context():
+        assert db.session.get(User, uid).sessions()[0].net_hours == 8.0
 
 
 def test_compute_hours_weekend_flat_credit():

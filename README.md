@@ -47,8 +47,8 @@ weekday is **8 regular hours**. Pay (net) hours = regular + overtime, where
 
 - hours worked **before 08:00**,
 - hours worked **after 18:00**,
-- the **lunch break if it was worked** — detected when a scan falls inside
-  12:00–14:00 (otherwise the break is unpaid and deducted), and
+- the **lunch break only when an admin marks the day "lunch worked"** on the
+  employee's page (otherwise the 12:00–14:00 break is unpaid and deducted), and
 - a flat **10 hours for any weekend day** (Sat/Sun) the employee is present.
 
 Reports also flag each weekday: **late** (first scan after 08:00 + grace,

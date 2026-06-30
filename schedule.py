@@ -71,14 +71,14 @@ class Schedule:
         secs = (min(end_dt, win_end) - max(start_dt, win_start)).total_seconds()
         return max(0.0, secs / 3600)
 
-    def compute_hours(self, clock_in, clock_out, scan_times=None):
+    def compute_hours(self, clock_in, clock_out, lunch_worked=False):
         """Split a day's attendance into a :class:`HoursBreakdown`.
 
         Weekends (non-workdays) earn a flat ``weekend_credit_hours`` when the
         person is present. On weekdays, regular hours are the in-window time
         (08-12 and 14-18); extra hours are time before the start, time after
-        the end, and the lunch break *if it was worked* — detected by a scan
-        falling inside the 12-14 window.
+        the end, and the lunch break *only when ``lunch_worked`` is set* (an
+        admin marks the day). Otherwise the lunch is unpaid and deducted.
         """
         day = clock_in.date()
         if not self.is_workday(day):
@@ -98,20 +98,17 @@ class Schedule:
         late = round((clock_out - max(clock_in, at(self.end))).total_seconds() / 3600, 2)
         late = max(0.0, late)
 
-        worked_break = bool(scan_times) and any(
-            self.break_start <= t.time() < self.break_end for t in scan_times
-        )
         break_worked = (
             round(self._overlap(clock_in, clock_out, at(self.break_start),
                                 at(self.break_end)), 2)
-            if worked_break else 0.0
+            if lunch_worked else 0.0
         )
         return HoursBreakdown(regular=regular, early=early,
                               break_worked=break_worked, late=late)
 
-    def net_hours(self, start_dt, end_dt, scan_times=None):
+    def net_hours(self, start_dt, end_dt, lunch_worked=False):
         """Total paid hours for the day (regular + extra)."""
-        return self.compute_hours(start_dt, end_dt, scan_times).total
+        return self.compute_hours(start_dt, end_dt, lunch_worked).total
 
     # --- flags ---
     def _late_limit(self, day):

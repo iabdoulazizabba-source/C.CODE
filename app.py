@@ -39,6 +39,7 @@ from flask_login import (
 from device import DeviceError, connector_from_config
 from models import (
     AttendancePunch,
+    LunchWorked,
     OffshoreMission,
     User,
     add_manual_punch,
@@ -461,6 +462,29 @@ def register_routes(app):
         return redirect(
             request.referrer or url_for("employee_detail", user_id=user_id)
         )
+
+    @app.route("/employees/<int:user_id>/lunch-worked", methods=["POST"])
+    @admin_required
+    def toggle_lunch(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            abort(404)
+        try:
+            day = datetime.strptime(request.form.get("date", ""), "%Y-%m-%d").date()
+        except ValueError:
+            flash("Invalid date.", "error")
+            return redirect(url_for("employee_detail", user_id=user.id))
+        existing = LunchWorked.query.filter_by(
+            user_id=user.id, work_date=day
+        ).first()
+        if existing:
+            db.session.delete(existing)
+            flash(f"Lunch on {day} no longer counted as worked.", "success")
+        else:
+            db.session.add(LunchWorked(user_id=user.id, work_date=day))
+            flash(f"Lunch on {day} credited as worked (+2h).", "success")
+        db.session.commit()
+        return redirect(url_for("employee_detail", user_id=user.id))
 
     @app.route("/punches/<int:punch_id>/restore", methods=["POST"])
     @admin_required

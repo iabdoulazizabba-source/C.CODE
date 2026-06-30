@@ -57,6 +57,9 @@ class User(UserMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="OffshoreMission.start_date.desc()",
     )
+    lunch_days = db.relationship(
+        "LunchWorked", backref="user", cascade="all, delete-orphan"
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -72,9 +75,14 @@ class User(UserMixin, db.Model):
         """Daily work sessions for this user (most recent first).
 
         Punches flagged ``ignored`` (corrected away by an admin) are skipped.
+        Days marked as worked-through-lunch credit the break as overtime.
         """
         active = [p for p in self.punches if not p.ignored]
-        return build_sessions(sorted(active, key=lambda p: p.timestamp))
+        sess = build_sessions(sorted(active, key=lambda p: p.timestamp))
+        lunch_dates = {lw.work_date for lw in self.lunch_days}
+        for s in sess:
+            s.lunch_worked = s.date in lunch_dates
+        return sess
 
     @property
     def offshore_days(self):
@@ -147,6 +155,23 @@ class OffshoreMission(db.Model):
         return self.start_date <= day <= self.end_date
 
 
+class LunchWorked(db.Model):
+    """Marks a day an employee worked through the 12:00-14:00 lunch.
+
+    When present, those 2 hours are credited as overtime instead of being
+    deducted. Set/cleared manually by an admin.
+    """
+
+    __tablename__ = "lunch_worked"
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "work_date", name="uq_lunch"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    work_date = db.Column(db.Date, nullable=False)
+
+
 class Session:
     """A derived clock-in / clock-out pair (not stored in the DB).
 
@@ -156,12 +181,14 @@ class Session:
     scans, used to tell whether the lunch break was worked.
     """
 
-    def __init__(self, clock_in, clock_out=None, scan_times=None):
+    def __init__(self, clock_in, clock_out=None, scan_times=None,
+                 lunch_worked=False):
         self.clock_in = clock_in
         self.clock_out = clock_out
         self.scan_times = scan_times or [
             t for t in (clock_in, clock_out) if t is not None
         ]
+        self.lunch_worked = lunch_worked
 
     @property
     def is_open(self):
@@ -184,7 +211,7 @@ class Session:
     @property
     def breakdown(self):
         return DEFAULT_SCHEDULE.compute_hours(
-            self.clock_in, self.clock_out, self.scan_times
+            self.clock_in, self.clock_out, lunch_worked=self.lunch_worked
         )
 
     @property
