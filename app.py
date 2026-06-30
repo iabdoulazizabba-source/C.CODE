@@ -181,7 +181,7 @@ def register_routes(app):
             "has_wordmark": has("wordmark.png"),
             "has_hero": has("hero.jpg"),
             "company_name": os.environ.get(
-                "COMPANY_NAME", "PESHAUD MARITIME INTERNATIONAL"
+                "COMPANY_NAME", "PESCHAUD MARITIME INTERNATIONAL"
             ),
             "fleet": os.environ.get(
                 "FLEET", "DAMEN Fast Crew Supplier · CB19 — Via Maris Shipyard"
