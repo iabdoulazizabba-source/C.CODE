@@ -29,25 +29,26 @@ MUTED = (95, 118, 137)
 LIGHT = (238, 242, 248)
 WHITE = (255, 255, 255)
 
-# Summary columns: (heading, width mm, attribute or formatter)
+# Summary columns: (heading, width mm, formatter) — widths fit A4 portrait
+# (usable width ~190mm).
 SUMMARY_COLS = [
-    ("Employee", 50, lambda r: r.name),
-    ("Position", 40, lambda r: r.position or "-"),
-    ("Net h", 20, lambda r: f"{r.net_hours:.2f}"),
-    ("OT h", 18, lambda r: f"{r.overtime:.2f}"),
-    ("Present", 20, lambda r: str(r.present_days)),
-    ("Weekend", 22, lambda r: str(r.weekend_days)),
-    ("Late", 16, lambda r: str(r.late_days)),
-    ("Absent", 18, lambda r: str(r.absent_days)),
-    ("Offshore", 22, lambda r: str(r.offshore_days)),
+    ("Employee", 38, lambda r: r.name),
+    ("Position", 30, lambda r: r.position or "-"),
+    ("Net h", 18, lambda r: f"{r.net_hours:.2f}"),
+    ("OT h", 16, lambda r: f"{r.overtime:.2f}"),
+    ("Present", 18, lambda r: str(r.present_days)),
+    ("Weekend", 20, lambda r: str(r.weekend_days)),
+    ("Late", 14, lambda r: str(r.late_days)),
+    ("Absent", 16, lambda r: str(r.absent_days)),
+    ("Offshore", 16, lambda r: str(r.offshore_days)),
 ]
 
 DAY_COLS = [
     ("Date", 30, lambda d: d.day.isoformat()),
     ("Day", 18, lambda d: d.weekday),
-    ("Status", 28, lambda d: d.status),
-    ("In", 22, lambda d: d.clock_in.strftime("%H:%M") if d.clock_in else "-"),
-    ("Out", 22, lambda d: d.clock_out.strftime("%H:%M") if d.clock_out else "-"),
+    ("Status", 30, lambda d: d.status),
+    ("In", 24, lambda d: d.clock_in.strftime("%H:%M") if d.clock_in else "-"),
+    ("Out", 24, lambda d: d.clock_out.strftime("%H:%M") if d.clock_out else "-"),
     ("Net h", 22, lambda d: f"{d.net_hours:.2f}"),
     ("OT h", 22, lambda d: f"{d.overtime:.2f}"),
 ]
@@ -55,7 +56,7 @@ DAY_COLS = [
 
 class ReportPDF(FPDF):
     def __init__(self, company, fleet, period, logo_path=None):
-        super().__init__(orientation="L", unit="mm", format="A4")
+        super().__init__(orientation="P", unit="mm", format="A4")
         self.company = company
         self.fleet = fleet
         self.period = period
@@ -104,7 +105,7 @@ class ReportPDF(FPDF):
         self.ln(1)
 
     def table(self, columns, rows):
-        self.set_font("Helvetica", "B", 8.5)
+        self.set_font("Helvetica", "B", 8)
         self.set_fill_color(*NAVY)
         self.set_text_color(*WHITE)
         for heading, width, _ in columns:
@@ -113,7 +114,7 @@ class ReportPDF(FPDF):
         self.set_text_color(*INK)
         fill = False
         for row in rows:
-            self.set_font("Helvetica", "", 8.5)
+            self.set_font("Helvetica", "", 8)
             self.set_fill_color(*(LIGHT if fill else WHITE))
             for i, (_, width, getter) in enumerate(columns):
                 align = "L" if i == 0 else "C"
