@@ -92,6 +92,7 @@
         <td>
           {% if d.late %}<span class="badge badge-late">late</span>{% endif %}
           {% if d.early %}<span class="badge badge-early">left early</span>{% endif %}
+          {% if d.lunch_worked %}<span class="badge badge-offshore">lunch</span>{% endif %}
           {% if d.overtime %}<span class="badge badge-ot">+{{ "%.1f"|format(d.overtime) }}h OT</span>{% endif %}
         </td>
       </tr>

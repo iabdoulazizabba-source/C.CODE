@@ -44,13 +44,14 @@ SUMMARY_COLS = [
 ]
 
 DAY_COLS = [
-    ("Date", 30, lambda d: d.day.isoformat()),
-    ("Day", 18, lambda d: d.weekday),
-    ("Status", 30, lambda d: d.status),
-    ("In", 24, lambda d: d.clock_in.strftime("%H:%M") if d.clock_in else "-"),
-    ("Out", 24, lambda d: d.clock_out.strftime("%H:%M") if d.clock_out else "-"),
-    ("Net h", 22, lambda d: f"{d.net_hours:.2f}"),
-    ("OT h", 22, lambda d: f"{d.overtime:.2f}"),
+    ("Date", 28, lambda d: d.day.isoformat()),
+    ("Day", 16, lambda d: d.weekday),
+    ("Status", 26, lambda d: d.status),
+    ("In", 22, lambda d: d.clock_in.strftime("%H:%M") if d.clock_in else "-"),
+    ("Out", 22, lambda d: d.clock_out.strftime("%H:%M") if d.clock_out else "-"),
+    ("Net h", 20, lambda d: f"{d.net_hours:.2f}"),
+    ("OT h", 18, lambda d: f"{d.overtime:.2f}"),
+    ("Lunch", 18, lambda d: "yes" if d.lunch_worked else "-"),
 ]
 
 

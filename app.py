@@ -577,7 +577,8 @@ def register_routes(app):
         writer = csv.writer(buffer)
         if kind == "days":
             writer.writerow(["Employee", "Date", "Weekday", "Status", "In",
-                             "Out", "Net hours", "Overtime", "Late", "Left early"])
+                             "Out", "Net hours", "Overtime", "Late", "Left early",
+                             "Lunch worked"])
             for rep in reports:
                 for d in rep.days:
                     writer.writerow([
@@ -586,6 +587,7 @@ def register_routes(app):
                         d.clock_out.strftime("%H:%M") if d.clock_out else "",
                         f"{d.net_hours:.2f}", f"{d.overtime:.2f}",
                         "yes" if d.late else "", "yes" if d.early else "",
+                        "yes" if d.lunch_worked else "",
                     ])
         else:
             writer.writerow(["Employee", "Net hours", "Overtime", "Present days",

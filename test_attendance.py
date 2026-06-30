@@ -11,6 +11,7 @@ from reporting import build_report, build_today
 from schedule import DEFAULT_SCHEDULE, Schedule
 from models import (
     AttendancePunch,
+    LunchWorked,
     OffshoreMission,
     User,
     add_manual_punch,
@@ -333,6 +334,20 @@ def test_lunch_worked_marker_credits_break(client, app):
                 data={"date": "2026-03-02"}, follow_redirects=True)
     with app.app_context():
         assert db.session.get(User, uid).sessions()[0].net_hours == 8.0
+
+
+def test_lunch_indicator_in_day_report(app):
+    with app.app_context():
+        uid = add_user("tina", device_uid="44").id
+        tina = db.session.get(User, uid)
+        add_manual_punch(tina, datetime(2026, 3, 2, 8, 0))
+        add_manual_punch(tina, datetime(2026, 3, 2, 18, 0))
+        db.session.add(LunchWorked(user_id=uid, work_date=date(2026, 3, 2)))
+        db.session.commit()
+        rep = build_report([db.session.get(User, uid)],
+                           date(2026, 3, 2), date(2026, 3, 2),
+                           today=date(2026, 3, 31))[0]
+        assert rep.days[0].lunch_worked and rep.days[0].overtime == 2.0
 
 
 def test_compute_hours_weekend_flat_credit():
