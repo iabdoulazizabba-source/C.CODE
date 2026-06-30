@@ -105,6 +105,21 @@ body {
 }
 .login-fleet { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
 .login-card { margin: 1.5rem auto 0; border-top: 3px solid var(--brand-red); width: 100%; }
+.login-wordmark { max-width: 320px; width: 80%; height: auto; }
+
+/* Photographic vessel hero (when static/hero.jpg is present) */
+.login-hero.has-hero {
+  background-size: cover;
+  background-position: center;
+  border-radius: 14px;
+  padding: 2.5rem 1rem 1.5rem;
+  max-width: 460px;
+  margin: 1.5rem auto 0;
+  box-shadow: 0 8px 24px rgba(10, 39, 64, 0.25);
+}
+.login-brand.on-hero, .login-brand.on-hero h1 { color: #fff; }
+.login-brand.on-hero .login-fleet { color: #d9e6f2; }
+.login-brand.on-hero img { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.45)); }
 
 h1 { margin-top: 0; font-size: 1.5rem; }
 h2 { font-size: 1.15rem; }

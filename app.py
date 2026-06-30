@@ -172,10 +172,14 @@ def admin_required(view):
 def register_routes(app):
     @app.context_processor
     def inject_brand():
-        # Prefer a real uploaded logo.png; fall back to the bundled emblem.
-        png = os.path.join(app.static_folder, "logo.png")
+        # Prefer real uploaded artwork; fall back to the bundled emblem.
+        def has(name):
+            return os.path.exists(os.path.join(app.static_folder, name))
+
         return {
-            "brand_logo": "logo.png" if os.path.exists(png) else "logo.svg",
+            "brand_logo": "logo.png" if has("logo.png") else "logo.svg",
+            "has_wordmark": has("wordmark.png"),
+            "has_hero": has("hero.jpg"),
             "company_name": os.environ.get(
                 "COMPANY_NAME", "PESHAUD MARITIME INTERNATIONAL"
             ),

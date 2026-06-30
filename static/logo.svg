@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Peschaud / Peshaud Maritime International">
   <!-- navy ring -->
-  <circle cx="64" cy="60" r="42" fill="none" stroke="#1d3f8f" stroke-width="9"/>
+  <circle cx="64" cy="60" r="42" fill="none" stroke="#1b2f6b" stroke-width="9"/>
   <!-- bold P -->
   <text x="68" y="83" font-family="'Arial Black','Arial Narrow',Arial,sans-serif"
-        font-size="62" font-weight="900" fill="#1d3f8f" text-anchor="middle">P</text>
+        font-size="62" font-weight="900" fill="#1b2f6b" text-anchor="middle">P</text>
   <!-- three red waving stripes (flag) -->
-  <g fill="none" stroke="#e0231f" stroke-width="7" stroke-linecap="round">
+  <g fill="none" stroke="#e1251b" stroke-width="7" stroke-linecap="round">
     <path d="M6 46 q10 -7 20 0 t20 0"/>
     <path d="M6 60 q10 -7 20 0 t20 0"/>
     <path d="M6 74 q10 -7 20 0 t20 0"/>
