@@ -5,6 +5,12 @@
   <p class="muted small"><a href="{{ url_for('employees') }}">&larr; Employees</a></p>
   <h1>{{ person.full_name }}</h1>
   <table class="kv">
+    <tr><th>Position</th><td>
+      <form method="post" action="{{ url_for('set_position', user_id=person.id) }}" class="inline-form">
+        <input type="text" name="position" value="{{ person.position or '' }}" placeholder="e.g. Captain" size="18">
+        <button type="submit" class="small-btn">Save</button>
+      </form>
+    </td></tr>
     <tr><th>Username</th><td>{{ person.username }}</td></tr>
     <tr><th>Role</th><td><span class="badge badge-{{ person.role }}">{{ person.role }}</span></td></tr>
     <tr><th>Device ID</th><td>{{ person.device_uid or "—" }}</td></tr>

@@ -28,6 +28,7 @@
   </form>
 
   <div class="btn-row" style="margin-top:0.8rem;">
+    <a class="btn-link" href="{{ url_for('reports_pdf', start=start.isoformat(), end=end.isoformat(), employee=selected or '') }}" target="_blank">🖨 PDF (print)</a>
     <a class="btn-link" href="{{ url_for('reports_csv', kind='summary', start=start.isoformat(), end=end.isoformat(), employee=selected or '') }}">⬇ Summary CSV</a>
     <a class="btn-link" href="{{ url_for('reports_csv', kind='days', start=start.isoformat(), end=end.isoformat(), employee=selected or '') }}">⬇ Detailed CSV</a>
   </div>
@@ -39,7 +40,7 @@
   <table>
     <thead>
       <tr>
-        <th>Employee</th><th>Net h</th><th>OT h</th><th>Present</th>
+        <th>Employee</th><th>Position</th><th>Net h</th><th>OT h</th><th>Present</th>
         <th>Weekend</th><th>Late</th><th>Absent</th><th>Offshore</th><th>Incomplete</th>
       </tr>
     </thead>
@@ -47,6 +48,7 @@
       {% for r in reports %}
       <tr>
         <td><a href="{{ url_for('reports', start=start.isoformat(), end=end.isoformat(), employee=r.user_id) }}">{{ r.name }}</a></td>
+        <td>{{ r.position or "—" }}</td>
         <td>{{ "%.2f"|format(r.net_hours) }}</td>
         <td>{% if r.overtime %}<strong>{{ "%.2f"|format(r.overtime) }}</strong>{% else %}—{% endif %}</td>
         <td>{{ r.present_days }}</td>

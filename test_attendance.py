@@ -17,6 +17,7 @@ from models import (
     build_sessions,
     db,
     import_device_users,
+    round_to_minute,
     sync_from_device,
 )
 
@@ -47,10 +48,11 @@ def login(client, username="admin", password="admin123"):
     )
 
 
-def add_user(username, device_uid=None, role="employee", password="pw"):
+def add_user(username, device_uid=None, role="employee", password="pw",
+             position=None):
     user = User(
         username=username, full_name=username.title(), role=role,
-        device_uid=device_uid,
+        device_uid=device_uid, position=position,
     )
     user.set_password(password)
     db.session.add(user)
@@ -111,6 +113,46 @@ def test_seed_admin_exists(app):
     with app.app_context():
         admin = User.query.filter_by(username="admin").first()
         assert admin is not None and admin.is_admin
+
+
+def test_round_to_minute():
+    assert round_to_minute(datetime(2026, 1, 1, 8, 0, 49)) == datetime(2026, 1, 1, 8, 1)
+    assert round_to_minute(datetime(2026, 1, 1, 8, 0, 29)) == datetime(2026, 1, 1, 8, 0)
+    assert round_to_minute(datetime(2026, 1, 1, 8, 0, 30)) == datetime(2026, 1, 1, 8, 1)
+
+
+def test_sessions_round_to_whole_minutes(app):
+    with app.app_context():
+        u = add_user("pat", device_uid="40")
+        add_manual_punch(u, datetime(2026, 2, 2, 8, 0, 49))   # -> 08:01
+        add_manual_punch(u, datetime(2026, 2, 2, 16, 0, 20))  # -> 16:00
+        s = User.query.filter_by(username="pat").first().sessions()[0]
+        assert s.clock_in.second == 0 and s.clock_out.second == 0
+        assert s.clock_in.strftime("%H:%M") == "08:01"
+        assert s.clock_out.strftime("%H:%M") == "16:00"
+
+
+def test_set_position_route(client, app):
+    with app.app_context():
+        uid = add_user("ralph", device_uid="42").id
+    login(client)
+    client.post(f"/employees/{uid}/position",
+                data={"position": "Chief Engineer"}, follow_redirects=True)
+    with app.app_context():
+        assert User.query.filter_by(username="ralph").first().position == "Chief Engineer"
+
+
+def test_pdf_report_download(client, app):
+    with app.app_context():
+        u = add_user("quinn", device_uid="41", position="Captain")
+        add_manual_punch(u, datetime(2026, 3, 2, 8, 0))
+        add_manual_punch(u, datetime(2026, 3, 2, 18, 0))
+        uid = u.id
+    login(client)
+    resp = client.get(f"/reports.pdf?start=2026-03-01&end=2026-03-31&employee={uid}")
+    assert resp.status_code == 200
+    assert resp.content_type == "application/pdf"
+    assert resp.data[:4] == b"%PDF"
 
 
 # --- device sync -----------------------------------------------------------

@@ -35,6 +35,7 @@ class DayRecord:
 class EmployeeReport:
     user_id: int
     name: str
+    position: str = ""
     days: List[DayRecord] = field(default_factory=list)
     net_hours: float = 0.0
     overtime: float = 0.0
@@ -57,7 +58,9 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
     reports = []
     for user in users:
         sessions = {s.date: s for s in user.sessions()}
-        report = EmployeeReport(user_id=user.id, name=user.full_name)
+        report = EmployeeReport(
+            user_id=user.id, name=user.full_name, position=user.position or ""
+        )
 
         day = start
         while day <= cutoff:

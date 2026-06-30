@@ -131,6 +131,11 @@ def _ensure_schema():
             text('ALTER TABLE "user" ADD COLUMN active BOOLEAN NOT NULL DEFAULT 1')
         )
         changed = True
+    if "position" not in user_cols:
+        db.session.execute(
+            text('ALTER TABLE "user" ADD COLUMN position VARCHAR(80)')
+        )
+        changed = True
 
     if changed:
         db.session.commit()
@@ -316,6 +321,7 @@ def register_routes(app):
         password = request.form.get("password", "")
         role = request.form.get("role", "employee")
         device_uid = request.form.get("device_uid", "").strip() or None
+        position = request.form.get("position", "").strip() or None
 
         if not username or not full_name or not password:
             flash("Name, username and password are required.", "error")
@@ -329,6 +335,7 @@ def register_routes(app):
                 full_name=full_name,
                 role=role,
                 device_uid=device_uid,
+                position=position,
             )
             user.set_password(password)
             db.session.add(user)
@@ -363,6 +370,17 @@ def register_routes(app):
             _link_existing_punches(user)
             flash(f"Updated device ID for {user.full_name}.", "success")
         return redirect(request.referrer or url_for("employees"))
+
+    @app.route("/employees/<int:user_id>/position", methods=["POST"])
+    @admin_required
+    def set_position(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            abort(404)
+        user.position = request.form.get("position", "").strip() or None
+        db.session.commit()
+        flash(f"Updated position for {user.full_name}.", "success")
+        return redirect(request.referrer or url_for("employee_detail", user_id=user.id))
 
     @app.route("/employees/<int:user_id>/toggle-active", methods=["POST"])
     @admin_required
@@ -561,6 +579,33 @@ def register_routes(app):
             buffer.getvalue(),
             mimetype="text/csv",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    @app.route("/reports.pdf")
+    @login_required
+    def reports_pdf():
+        from pdf_report import build_pdf
+
+        start, end = _parse_range()
+        people, _ = _report_people()
+        reports = build_report(people, start, end)
+        detail = reports[0] if len(reports) == 1 else None
+
+        logo = os.path.join(app.static_folder, "logo.png")
+        brand = inject_brand()
+        pdf_bytes = build_pdf(
+            reports,
+            period=f"{start.isoformat()} to {end.isoformat()}",
+            company=brand["company_name"],
+            fleet=brand["fleet"],
+            logo_path=logo if os.path.exists(logo) else None,
+            detail=detail,
+        )
+        filename = f"timesheet_{start.isoformat()}_{end.isoformat()}.pdf"
+        return Response(
+            pdf_bytes,
+            mimetype="application/pdf",
+            headers={"Content-Disposition": f"inline; filename={filename}"},
         )
 
 

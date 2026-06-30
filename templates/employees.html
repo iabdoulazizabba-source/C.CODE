@@ -13,12 +13,18 @@
   </p>
   <table>
     <thead>
-      <tr><th>Name</th><th>Username</th><th>Role</th><th>Device ID</th><th>Active</th><th></th></tr>
+      <tr><th>Name</th><th>Position</th><th>Username</th><th>Role</th><th>Device ID</th><th>Active</th><th></th></tr>
     </thead>
     <tbody>
       {% for person in people %}
       <tr class="{% if not person.active %}row-inactive{% endif %}">
         <td><a href="{{ url_for('employee_detail', user_id=person.id) }}">{{ person.full_name }}</a></td>
+        <td>
+          <form method="post" action="{{ url_for('set_position', user_id=person.id) }}" class="inline-form">
+            <input type="text" name="position" value="{{ person.position or '' }}" placeholder="—" size="12">
+            <button type="submit" class="small-btn">Save</button>
+          </form>
+        </td>
         <td>{{ person.username }}</td>
         <td><span class="badge badge-{{ person.role }}">{{ person.role }}</span></td>
         <td>
@@ -59,6 +65,9 @@
   <form method="post" action="{{ url_for('add_employee') }}" class="grid-form">
     <label>Full name
       <input type="text" name="full_name" required>
+    </label>
+    <label>Position <span class="muted">(optional)</span>
+      <input type="text" name="position" placeholder="e.g. Deckhand">
     </label>
     <label>Username
       <input type="text" name="username" required>

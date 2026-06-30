@@ -32,6 +32,9 @@ tag it as in vs out (`punch=255`). So per employee, per calendar day:
   ("first-in / last-out"), then
 - the scheduled **lunch break** (12:00–14:00) is deducted to give **net hours**.
 
+Scan times are rounded to the nearest minute (≥30s up, otherwise down) before
+hours are computed, so totals carry no stray seconds.
+
 A day with only a single scan is shown as an **open / incomplete** session (no
 clock-out) rather than counted as zero hours. Raw punches are stored verbatim,
 so this rule can be refined later without re-reading the device.
@@ -71,8 +74,10 @@ Override the schedule with `WORK_START`, `WORK_END`, `BREAK_START`, `BREAK_END`,
 - **Schedule-aware reports** — net hours (after lunch break) plus late /
   left-early / overtime flags per session
 - **Pay-period reports** — filter by date range and employee, with per-day
-  **absence detection** (a weekday with no scans and not offshore) and
-  **CSV export** (summary or detailed) for payroll
+  **absence detection** (a weekday with no scans and not offshore),
+  **CSV export** (summary or detailed) and a **print-ready PDF** (branded
+  header/footer with the logo) for payroll
+- **Job function / position** per employee, shown in lists, reports, and PDF
 - **Timesheet reports** derived from device punches (first-in / last-out, deduped)
 
 ## Quick start

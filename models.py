@@ -7,7 +7,7 @@ sessions and hours by pairing them chronologically.
 """
 
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
@@ -44,6 +44,9 @@ class User(UserMixin, db.Model):
     # Inactive users (e.g. the admin login, or staff who left) are excluded
     # from attendance reports and the Today board.
     active = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Job function / post, e.g. "Captain", "Chief Engineer", "Deckhand".
+    position = db.Column(db.String(80), nullable=True)
 
     punches = db.relationship(
         "AttendancePunch", backref="user", cascade="all, delete-orphan"
@@ -228,6 +231,14 @@ def dedupe_times(times, window_minutes=DEFAULT_DEDUP_MINUTES):
     return kept
 
 
+def round_to_minute(dt):
+    """Round a timestamp to the nearest minute (>=30s up, otherwise down)."""
+    floored = dt.replace(second=0, microsecond=0)
+    if dt.second >= 30:
+        return floored + timedelta(minutes=1)
+    return floored
+
+
 def build_sessions(punches, dedup_minutes=DEFAULT_DEDUP_MINUTES):
     """Derive one work session per calendar day (most recent first).
 
@@ -245,6 +256,7 @@ def build_sessions(punches, dedup_minutes=DEFAULT_DEDUP_MINUTES):
         times = dedupe_times(by_day[day], dedup_minutes)
         if not times:
             continue
+        times = [round_to_minute(t) for t in times]  # whole-minute precision
         clock_out = times[-1] if len(times) > 1 else None
         sessions.append(Session(times[0], clock_out, scan_times=times))
     sessions.reverse()
