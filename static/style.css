@@ -3,12 +3,12 @@
   --card: #ffffff;
   --ink: #0f2333;
   --muted: #5f7689;
-  --brand: #0b4f8a;        /* ocean navy-blue */
-  --brand-dark: #08395f;
-  --accent: #0c8599;       /* teal */
-  --gold: #d4a430;         /* brass accent */
-  --navy: #0a2740;         /* deep header navy */
-  --navy-2: #103a5c;
+  --brand: #1d3f8f;        /* Peschaud royal navy */
+  --brand-dark: #152f6b;
+  --accent: #0c8599;       /* sea teal (waves only) */
+  --brand-red: #e0231f;    /* Peschaud red */
+  --navy: #14254f;         /* deep header navy */
+  --navy-2: #1b3470;
   --danger: #e03131;
   --ok: #2f9e44;
   --border: #d7e3ec;
@@ -35,7 +35,7 @@ body {
   gap: 0.5rem;
   padding: 0.7rem 1.5rem;
   background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
-  border-bottom: 3px solid var(--gold);
+  border-bottom: 3px solid var(--brand-red);
   box-shadow: 0 2px 10px rgba(10, 39, 64, 0.25);
 }
 
@@ -53,7 +53,7 @@ body {
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  color: var(--gold);
+  color: #9db8d6;
 }
 
 .topbar nav { display: flex; align-items: center; gap: 1.1rem; }
@@ -72,7 +72,7 @@ body {
   font-size: 0.78rem;
   color: var(--muted);
 }
-.site-footer .anchor { color: var(--gold); }
+.site-footer .anchor { color: var(--brand-red); }
 
 .card {
   background: var(--card);
@@ -104,7 +104,7 @@ body {
   font-weight: 600;
 }
 .login-fleet { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
-.login-card { margin: 1.5rem auto 0; border-top: 3px solid var(--gold); width: 100%; }
+.login-card { margin: 1.5rem auto 0; border-top: 3px solid var(--brand-red); width: 100%; }
 
 h1 { margin-top: 0; font-size: 1.5rem; }
 h2 { font-size: 1.15rem; }

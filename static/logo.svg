@@ -1,33 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Peshaud Maritime International">
-  <defs>
-    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#103a5c"/>
-      <stop offset="1" stop-color="#0a2740"/>
-    </linearGradient>
-  </defs>
-  <!-- roundel -->
-  <circle cx="60" cy="60" r="56" fill="url(#sea)" stroke="#d4a430" stroke-width="3"/>
-  <circle cx="60" cy="60" r="49" fill="none" stroke="#d4a430" stroke-width="1" stroke-opacity="0.5"/>
-
-  <!-- sky glow -->
-  <circle cx="60" cy="46" r="30" fill="#0c8599" fill-opacity="0.12"/>
-
-  <!-- fast crew supplier silhouette -->
-  <g fill="#f4f7fa">
-    <!-- superstructure / wheelhouse -->
-    <path d="M40 56h20l-3-10h-9l-2 4h-6z"/>
-    <rect x="58" y="50" width="9" height="6" rx="1"/>
-    <!-- mast -->
-    <rect x="44" y="40" width="2" height="8"/>
-    <!-- hull: long low fast-crew-supplier profile with raised bow -->
-    <path d="M26 58h62l-6 11c-1 2-3 3-5 3H33c-2 0-4-1-5-3l-2-4z"/>
-  </g>
-  <!-- waterline accent -->
-  <rect x="30" y="58" width="54" height="2" fill="#d4a430" fill-opacity="0.8"/>
-
-  <!-- waves -->
-  <g fill="none" stroke="#9bd0dd" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.9">
-    <path d="M24 80c6-5 12-5 18 0s12 5 18 0 12-5 18 0 12 5 18 0"/>
-    <path d="M24 88c6-5 12-5 18 0s12 5 18 0 12-5 18 0 12 5 18 0" stroke="#0c8599"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Peschaud / Peshaud Maritime International">
+  <!-- navy ring -->
+  <circle cx="64" cy="60" r="42" fill="none" stroke="#1d3f8f" stroke-width="9"/>
+  <!-- bold P -->
+  <text x="68" y="83" font-family="'Arial Black','Arial Narrow',Arial,sans-serif"
+        font-size="62" font-weight="900" fill="#1d3f8f" text-anchor="middle">P</text>
+  <!-- three red waving stripes (flag) -->
+  <g fill="none" stroke="#e0231f" stroke-width="7" stroke-linecap="round">
+    <path d="M6 46 q10 -7 20 0 t20 0"/>
+    <path d="M6 60 q10 -7 20 0 t20 0"/>
+    <path d="M6 74 q10 -7 20 0 t20 0"/>
   </g>
 </svg>
