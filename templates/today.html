@@ -44,7 +44,7 @@
         </td>
         <td>{{ r.first_in.strftime("%H:%M") if r.first_in else "—" }}</td>
         <td>{{ r.last_out.strftime("%H:%M") if r.last_out else "—" }}</td>
-        <td>{% if r.net_hours %}{{ "%.2f"|format(r.net_hours) }}{% else %}—{% endif %}</td>
+        <td>{% if r.net_hours %}{{ r.net_hours|hours }}{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

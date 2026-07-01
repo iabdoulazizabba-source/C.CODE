@@ -4,7 +4,7 @@
 <div class="card">
   <h1>Timesheet report</h1>
   <p class="muted small">
-    {{ start }} → {{ end }}. A full weekday is {{ "%.1f"|format(expected_hours) }}h
+    {{ start }} → {{ end }}. A full weekday is {{ expected_hours|hours }}h
     (08:00–18:00 minus the 12:00–14:00 lunch). <strong>Overtime</strong> = hours
     before 08:00, after 18:00, a worked lunch, plus a flat 10h for any
     <strong>weekend</strong> day worked. <strong>Absent</strong> = a weekday with
@@ -49,8 +49,8 @@
       <tr>
         <td><a href="{{ url_for('reports', start=start.isoformat(), end=end.isoformat(), employee=r.user_id) }}">{{ r.name }}</a></td>
         <td>{{ r.position or "—" }}</td>
-        <td>{{ "%.2f"|format(r.net_hours) }}</td>
-        <td>{% if r.overtime %}<strong>{{ "%.2f"|format(r.overtime) }}</strong>{% else %}—{% endif %}</td>
+        <td>{{ r.net_hours|hours }}</td>
+        <td>{% if r.overtime %}<strong>{{ r.overtime|hours }}</strong>{% else %}—{% endif %}</td>
         <td>{{ r.present_days }}</td>
         <td>{% if r.weekend_days %}<span class="badge badge-offshore">{{ r.weekend_days }}</span>{% else %}0{% endif %}</td>
         <td>{% if r.late_days %}<span class="badge badge-late">{{ r.late_days }}</span>{% else %}0{% endif %}</td>
@@ -88,12 +88,12 @@
         </td>
         <td>{{ d.clock_in.strftime("%H:%M") if d.clock_in else "—" }}</td>
         <td>{{ d.clock_out.strftime("%H:%M") if d.clock_out else "—" }}</td>
-        <td>{{ "%.2f"|format(d.net_hours) }}</td>
+        <td>{{ d.net_hours|hours }}</td>
         <td>
           {% if d.late %}<span class="badge badge-late">late</span>{% endif %}
           {% if d.early %}<span class="badge badge-early">left early</span>{% endif %}
           {% if d.lunch_worked %}<span class="badge badge-offshore">lunch</span>{% endif %}
-          {% if d.overtime %}<span class="badge badge-ot">+{{ "%.1f"|format(d.overtime) }}h OT</span>{% endif %}
+          {% if d.overtime %}<span class="badge badge-ot">+{{ d.overtime|hours }}h OT</span>{% endif %}
         </td>
       </tr>
       {% endfor %}

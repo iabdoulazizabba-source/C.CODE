@@ -49,7 +49,7 @@ from models import (
     utcnow,
 )
 from reporting import build_report, build_today
-from schedule import DEFAULT_SCHEDULE
+from schedule import DEFAULT_SCHEDULE, round_hours
 
 login_manager = LoginManager()
 login_manager.login_view = "login"
@@ -83,6 +83,7 @@ def create_app(database_uri=None, connector=None, extra_config=None):
 
     db.init_app(app)
     login_manager.init_app(app)
+    app.add_template_filter(round_hours, "hours")
 
     # The device connector can be injected (tests) or built from config.
     if connector is not None:
@@ -585,7 +586,7 @@ def register_routes(app):
                         rep.name, d.day.isoformat(), d.weekday, d.status,
                         d.clock_in.strftime("%H:%M") if d.clock_in else "",
                         d.clock_out.strftime("%H:%M") if d.clock_out else "",
-                        f"{d.net_hours:.2f}", f"{d.overtime:.2f}",
+                        round_hours(d.net_hours), round_hours(d.overtime),
                         "yes" if d.late else "", "yes" if d.early else "",
                         "yes" if d.lunch_worked else "",
                     ])
@@ -595,7 +596,7 @@ def register_routes(app):
                              "Absent days", "Offshore days"])
             for rep in reports:
                 writer.writerow([
-                    rep.name, f"{rep.net_hours:.2f}", f"{rep.overtime:.2f}",
+                    rep.name, round_hours(rep.net_hours), round_hours(rep.overtime),
                     rep.present_days, rep.weekend_days, rep.incomplete_days,
                     rep.late_days, rep.absent_days, rep.offshore_days,
                 ])

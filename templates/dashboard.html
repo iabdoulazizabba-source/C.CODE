@@ -40,10 +40,10 @@
           {% if s.is_open %}<em>in progress</em>
           {% else %}{{ s.clock_out.strftime("%Y-%m-%d %H:%M") }}{% endif %}
         </td>
-        <td>{{ "%.2f"|format(s.net_hours) }}</td>
+        <td>{{ s.net_hours|hours }}</td>
         <td>
           {% if s.is_late %}<span class="badge badge-late">late</span>{% endif %}
-          {% if s.overtime_hours %}<span class="badge badge-ot">+{{ "%.1f"|format(s.overtime_hours) }}h</span>{% endif %}
+          {% if s.overtime_hours %}<span class="badge badge-ot">+{{ s.overtime_hours|hours }}h</span>{% endif %}
         </td>
       </tr>
       {% endfor %}

@@ -7,6 +7,8 @@ summary table, and — when a single employee is in view — a day-by-day table.
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
+from schedule import round_hours
+
 # Core PDF fonts are Latin-1 only; map the few non-Latin-1 glyphs we use.
 _REPLACEMENTS = {
     "—": "-", "–": "-", "·": "-", "•": "-",
@@ -34,8 +36,8 @@ WHITE = (255, 255, 255)
 SUMMARY_COLS = [
     ("Employee", 38, lambda r: r.name),
     ("Position", 30, lambda r: r.position or "-"),
-    ("Net h", 18, lambda r: f"{r.net_hours:.2f}"),
-    ("OT h", 16, lambda r: f"{r.overtime:.2f}"),
+    ("Net h", 18, lambda r: str(round_hours(r.net_hours))),
+    ("OT h", 16, lambda r: str(round_hours(r.overtime))),
     ("Present", 18, lambda r: str(r.present_days)),
     ("Weekend", 20, lambda r: str(r.weekend_days)),
     ("Late", 14, lambda r: str(r.late_days)),
@@ -49,8 +51,8 @@ DAY_COLS = [
     ("Status", 26, lambda d: d.status),
     ("In", 22, lambda d: d.clock_in.strftime("%H:%M") if d.clock_in else "-"),
     ("Out", 22, lambda d: d.clock_out.strftime("%H:%M") if d.clock_out else "-"),
-    ("Net h", 20, lambda d: f"{d.net_hours:.2f}"),
-    ("OT h", 18, lambda d: f"{d.overtime:.2f}"),
+    ("Net h", 20, lambda d: str(round_hours(d.net_hours))),
+    ("OT h", 18, lambda d: str(round_hours(d.overtime))),
     ("Lunch", 18, lambda d: "yes" if d.lunch_worked else "-"),
 ]
 

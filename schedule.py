@@ -22,6 +22,11 @@ def _mins(t):
     return t.hour * 60 + t.minute
 
 
+def round_hours(value):
+    """Round hours to the nearest whole hour (half up). Display only."""
+    return int(float(value) + 0.5)
+
+
 @dataclass
 class HoursBreakdown:
     """How a single day's worked hours split into regular vs extra."""
