@@ -8,7 +8,7 @@ from app import create_app
 from device import FakeConnector, Punch, DeviceUser
 from models import Session
 from reporting import build_report, build_today
-from schedule import DEFAULT_SCHEDULE, Schedule
+from schedule import DEFAULT_SCHEDULE, Schedule, round_hours
 from models import (
     AttendancePunch,
     LunchWorked,
@@ -114,6 +114,14 @@ def test_seed_admin_exists(app):
     with app.app_context():
         admin = User.query.filter_by(username="admin").first()
         assert admin is not None and admin.is_admin
+
+
+def test_round_hours_whole():
+    assert round_hours(8.25) == 8
+    assert round_hours(8.5) == 9
+    assert round_hours(146.33) == 146
+    assert round_hours(10.0) == 10
+    assert round_hours(0.0) == 0
 
 
 def test_round_to_minute():
