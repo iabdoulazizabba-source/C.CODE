@@ -9,6 +9,8 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
+_MIDNIGHT = time(0, 0)
+
 
 def _parse_time(value, default):
     try:
@@ -76,44 +78,53 @@ class Schedule:
         secs = (min(end_dt, win_end) - max(start_dt, win_start)).total_seconds()
         return max(0.0, secs / 3600)
 
-    def compute_hours(self, clock_in, clock_out, lunch_worked=False):
-        """Split a day's attendance into a :class:`HoursBreakdown`.
+    def compute_hours(self, segments, lunch_override=None):
+        """Split a day's work ``segments`` (list of (in, out)) into a
+        :class:`HoursBreakdown`.
 
-        Weekends (non-workdays) earn a flat ``weekend_credit_hours`` when the
-        person is present. On weekdays, regular hours are the in-window time
-        (08-12 and 14-18); extra hours are time before the start, time after
-        the end, and the lunch break *only when ``lunch_worked`` is set* (an
-        admin marks the day). Otherwise the lunch is unpaid and deducted.
+        Regular hours are in-window time (08-12 and 14-18). Overtime is time
+        before the start, time after the end, and the 12:00-14:00 lunch when
+        it was *worked* — i.e. no segment left the desk for lunch. ``lunch_
+        override`` forces that: ``True`` credits the break, ``False`` deducts
+        it, ``None`` (default) decides from the segments. Weekends earn a flat
+        credit when present.
         """
-        day = clock_in.date()
+        if not segments:
+            return HoursBreakdown()
+        day = segments[0][0].date()
         if not self.is_workday(day):
             return HoursBreakdown(weekend=round(float(self.weekend_credit_hours), 2))
-        if clock_out is None:
-            return HoursBreakdown()  # single scan, incomplete
 
         def at(t):
             return datetime.combine(day, t)
 
-        regular = round(
-            self._overlap(clock_in, clock_out, at(self.start), at(self.break_start))
-            + self._overlap(clock_in, clock_out, at(self.break_end), at(self.end)),
-            2,
-        )
-        early = round(self._overlap(clock_in, clock_out, at(time(0, 0)), at(self.start)), 2)
-        late = round((clock_out - max(clock_in, at(self.end))).total_seconds() / 3600, 2)
-        late = max(0.0, late)
+        day_end = datetime.combine(day, _MIDNIGHT) + timedelta(days=1)
+        regular = early = late = auto_break = 0.0
+        for clock_in, clock_out in segments:
+            regular += self._overlap(clock_in, clock_out, at(self.start), at(self.break_start))
+            regular += self._overlap(clock_in, clock_out, at(self.break_end), at(self.end))
+            early += self._overlap(clock_in, clock_out, at(_MIDNIGHT), at(self.start))
+            late += self._overlap(clock_in, clock_out, at(self.end), day_end)
+            auto_break += self._overlap(clock_in, clock_out, at(self.break_start),
+                                        at(self.break_end))
 
-        break_worked = (
-            round(self._overlap(clock_in, clock_out, at(self.break_start),
-                                at(self.break_end)), 2)
-            if lunch_worked else 0.0
-        )
-        return HoursBreakdown(regular=regular, early=early,
-                              break_worked=break_worked, late=late)
+        if lunch_override is True:
+            first_in, last_out = segments[0][0], segments[-1][1]
+            break_worked = self._overlap(first_in, last_out, at(self.break_start),
+                                         at(self.break_end))
+        elif lunch_override is False:
+            break_worked = 0.0
+        else:
+            break_worked = auto_break
 
-    def net_hours(self, start_dt, end_dt, lunch_worked=False):
-        """Total paid hours for the day (regular + extra)."""
-        return self.compute_hours(start_dt, end_dt, lunch_worked).total
+        return HoursBreakdown(
+            regular=round(regular, 2), early=round(early, 2),
+            break_worked=round(break_worked, 2), late=round(late, 2),
+        )
+
+    def net_hours(self, start_dt, end_dt, lunch_override=None):
+        """Total paid hours for a single continuous span (regular + extra)."""
+        return self.compute_hours([(start_dt, end_dt)], lunch_override).total
 
     # --- flags ---
     def _late_limit(self, day):

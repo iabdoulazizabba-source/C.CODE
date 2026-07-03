@@ -39,7 +39,7 @@ from flask_login import (
 from device import DeviceError, connector_from_config
 from models import (
     AttendancePunch,
-    LunchWorked,
+    LunchOverride,
     OffshoreMission,
     User,
     add_manual_punch,
@@ -138,6 +138,15 @@ def _ensure_schema():
             text('ALTER TABLE "user" ADD COLUMN position VARCHAR(80)')
         )
         changed = True
+
+    if "lunch_worked" in inspector.get_table_names():
+        lunch_cols = {c["name"] for c in inspector.get_columns("lunch_worked")}
+        if "worked" not in lunch_cols:
+            db.session.execute(
+                text("ALTER TABLE lunch_worked "
+                     "ADD COLUMN worked BOOLEAN NOT NULL DEFAULT 1")
+            )
+            changed = True
 
     if changed:
         db.session.commit()
@@ -464,9 +473,9 @@ def register_routes(app):
             request.referrer or url_for("employee_detail", user_id=user_id)
         )
 
-    @app.route("/employees/<int:user_id>/lunch-worked", methods=["POST"])
+    @app.route("/employees/<int:user_id>/lunch", methods=["POST"])
     @admin_required
-    def toggle_lunch(user_id):
+    def set_lunch(user_id):
         user = db.session.get(User, user_id)
         if user is None:
             abort(404)
@@ -475,16 +484,22 @@ def register_routes(app):
         except ValueError:
             flash("Invalid date.", "error")
             return redirect(url_for("employee_detail", user_id=user.id))
-        existing = LunchWorked.query.filter_by(
-            user_id=user.id, work_date=day
-        ).first()
-        if existing:
-            db.session.delete(existing)
-            flash(f"Lunch on {day} no longer counted as worked.", "success")
+        state = request.form.get("state", "auto")
+        row = LunchOverride.query.filter_by(user_id=user.id, work_date=day).first()
+        if state == "auto":
+            if row:
+                db.session.delete(row)
+            message = "auto (from scans)"
         else:
-            db.session.add(LunchWorked(user_id=user.id, work_date=day))
-            flash(f"Lunch on {day} credited as worked (+2h).", "success")
+            worked = state == "worked"
+            if row:
+                row.worked = worked
+            else:
+                db.session.add(LunchOverride(user_id=user.id, work_date=day,
+                                             worked=worked))
+            message = "worked (+2h)" if worked else "taken (deducted)"
         db.session.commit()
+        flash(f"Lunch for {day}: {message}.", "success")
         return redirect(url_for("employee_detail", user_id=user.id))
 
     @app.route("/punches/<int:punch_id>/restore", methods=["POST"])

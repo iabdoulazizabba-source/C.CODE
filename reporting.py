@@ -87,7 +87,7 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
                     day, "present", session.clock_in, session.clock_out,
                     net_hours=session.net_hours, overtime=session.overtime_hours,
                     late=session.is_late, early=session.is_early_leave,
-                    lunch_worked=session.lunch_worked,
+                    lunch_worked=session.worked_break,
                 ))
                 report.present_days += 1
                 report.net_hours += session.net_hours

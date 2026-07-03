@@ -61,8 +61,9 @@
 <div class="card">
   <h2>Work sessions</h2>
   <p class="muted small">
-    Net hours deduct the 12:00–14:00 lunch unless a weekday is marked
-    <strong>lunch worked</strong> (credits the 2h as overtime).
+    Lunch is decided from the scans: if the crew member checked out and back in
+    for lunch it's unpaid; if they didn't (no lunch scan) the 12:00–14:00 counts
+    as overtime. Use the <strong>Lunch</strong> control to override a day.
   </p>
   {% if sessions %}
   <table>
@@ -78,13 +79,13 @@
           {% if s.is_weekend or s.is_open %}
             <span class="muted">—</span>
           {% else %}
-          <form method="post" action="{{ url_for('toggle_lunch', user_id=person.id) }}" class="inline-form">
+          <form method="post" action="{{ url_for('set_lunch', user_id=person.id) }}" class="inline-form">
             <input type="hidden" name="date" value="{{ s.clock_in.strftime('%Y-%m-%d') }}">
-            {% if s.lunch_worked %}
-            <button type="submit" class="small-btn" title="Click to clear">✓ worked</button>
-            {% else %}
-            <button type="submit" class="small-btn secondary">mark worked</button>
-            {% endif %}
+            <select name="state" onchange="this.form.submit()">
+              <option value="auto" {% if s.lunch_override is none %}selected{% endif %}>auto ({{ 'worked' if s.worked_break else 'taken' }})</option>
+              <option value="worked" {% if s.lunch_override == true %}selected{% endif %}>worked</option>
+              <option value="taken" {% if s.lunch_override == false %}selected{% endif %}>taken</option>
+            </select>
           </form>
           {% endif %}
         </td>

@@ -11,7 +11,6 @@ from reporting import build_report, build_today
 from schedule import DEFAULT_SCHEDULE, Schedule, round_hours
 from models import (
     AttendancePunch,
-    LunchWorked,
     OffshoreMission,
     User,
     add_manual_punch,
@@ -72,42 +71,62 @@ def test_password_hashing(app):
         assert not user.check_password("wrong")
 
 
-def test_build_sessions_first_in_last_out_per_day():
-    # One day, three scans -> one session spanning first..last (Rule A).
-    punches = [
+def test_build_sessions_lunch_taken_vs_worked():
+    # 4 scans = checked out and back in for lunch -> lunch unpaid -> 8h net.
+    taken = build_sessions([
         Punch("1", datetime(2026, 1, 1, 8, 0)),
-        Punch("1", datetime(2026, 1, 1, 12, 30)),
-        Punch("1", datetime(2026, 1, 1, 17, 0)),
-    ]
-    sessions = build_sessions(punches)
-    assert len(sessions) == 1
-    assert sessions[0].hours == 9.0
-    assert not sessions[0].is_open
+        Punch("1", datetime(2026, 1, 1, 12, 0)),
+        Punch("1", datetime(2026, 1, 1, 14, 0)),
+        Punch("1", datetime(2026, 1, 1, 18, 0)),
+    ])
+    assert len(taken) == 1
+    s = taken[0]
+    assert not s.is_open
+    assert s.regular_hours == 8.0 and s.overtime_hours == 0.0
+    assert s.net_hours == 8.0 and not s.worked_break
+
+    # 2 scans = no lunch check -> worked through -> +2h overtime.
+    worked = build_sessions([
+        Punch("1", datetime(2026, 1, 1, 8, 0)),
+        Punch("1", datetime(2026, 1, 1, 18, 0)),
+    ])[0]
+    assert worked.net_hours == 10.0 and worked.overtime_hours == 2.0
+    assert worked.worked_break
+
+
+def test_build_sessions_odd_scans_leave_day_open():
+    # A missed clock-out (odd scan count) leaves the day incomplete.
+    s = build_sessions([
+        Punch("1", datetime(2026, 1, 1, 8, 0)),
+        Punch("1", datetime(2026, 1, 1, 12, 0)),
+        Punch("1", datetime(2026, 1, 1, 14, 0)),
+    ])[0]
+    assert s.is_open
 
 
 def test_build_sessions_dedupes_near_identical_scans():
     # Duplicate fingerprint reads within ~2 min collapse to one scan.
-    punches = [
+    s = build_sessions([
         Punch("1", datetime(2026, 1, 1, 7, 52, 0)),
         Punch("1", datetime(2026, 1, 1, 7, 52, 30)),  # duplicate -> dropped
         Punch("1", datetime(2026, 1, 1, 17, 53, 0)),
         Punch("1", datetime(2026, 1, 1, 17, 53, 20)),  # duplicate -> dropped
-    ]
-    sessions = build_sessions(punches)
-    assert len(sessions) == 1
-    assert sessions[0].hours == round((17 + 53 / 60) - (7 + 52 / 60), 2)
+    ])[0]
+    assert len(s.scans) == 2
+    assert s.clock_in.strftime("%H:%M") == "07:52"
+    assert s.clock_out.strftime("%H:%M") == "17:53"
 
 
 def test_build_sessions_splits_by_day():
     punches = [
         Punch("1", datetime(2026, 1, 1, 8, 0)),
-        Punch("1", datetime(2026, 1, 1, 17, 0)),
+        Punch("1", datetime(2026, 1, 1, 18, 0)),
         Punch("1", datetime(2026, 1, 2, 9, 0)),  # single scan next day = open
     ]
     sessions = build_sessions(punches)  # most recent first
     assert len(sessions) == 2
-    assert sessions[0].is_open          # 2026-01-02, one scan
-    assert sessions[1].hours == 9.0     # 2026-01-01
+    assert sessions[0].is_open           # 2026-01-02, one scan
+    assert sessions[1].hours == 10.0     # 2026-01-01, 08:00-18:00 continuous
 
 
 def test_seed_admin_exists(app):
@@ -285,13 +304,12 @@ def test_ignored_punch_excluded_from_hours(app):
         assert sess[0].is_open
 
 
-def test_schedule_net_hours_deducts_break():
+def test_net_hours_single_span():
     s = Schedule()  # default: 08:00-18:00, break 12:00-14:00
     assert s.expected_hours == 8.0
-    full = s.net_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0))
-    assert full == 8.0  # 10h span - 2h break
-    half = s.net_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 13, 0))
-    assert half == 4.0  # 5h span - 1h break overlap (12:00-13:00)
+    # A continuous span counts the lunch as worked (no lunch check).
+    assert s.net_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0)) == 10.0
+    assert s.net_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 13, 0)) == 5.0
 
 
 def test_schedule_late_and_early_flags():
@@ -304,42 +322,47 @@ def test_schedule_late_and_early_flags():
     assert not s.is_early_leave(datetime(2026, 1, 5, 18, 0))
 
 
-def test_compute_hours_weekday_early_late_and_break():
+def test_compute_hours_from_segments():
     s = Schedule()
-    # Monday, normal day with lunch taken -> 8 regular, no extra.
-    b = s.compute_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0))
-    assert (b.regular, b.extra, b.total) == (8.0, 0.0, 8.0)
-    # Early start + late finish -> 2h before + 2h after as overtime.
-    b2 = s.compute_hours(datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 20, 0))
-    assert b2.early == 2.0 and b2.late == 2.0
-    assert (b2.regular, b2.total) == (8.0, 12.0)
-    # Lunch is unpaid by default...
-    b3 = s.compute_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0))
-    assert b3.break_worked == 0.0 and b3.total == 8.0
-    # ...unless the day is marked as worked-through-lunch.
-    b4 = s.compute_hours(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 18, 0),
-                         lunch_worked=True)
-    assert b4.break_worked == 2.0 and b4.total == 10.0
+
+    def t(h, m=0):
+        return datetime(2026, 1, 5, h, m)  # a Monday
+
+    # Lunch taken (two segments) -> 8 regular, no break, no extra.
+    b = s.compute_hours([(t(8), t(12)), (t(14), t(18))])
+    assert (b.regular, b.break_worked, b.total) == (8.0, 0.0, 8.0)
+    # Worked through (one segment) -> lunch counts as overtime.
+    b2 = s.compute_hours([(t(8), t(18))])
+    assert b2.break_worked == 2.0 and b2.total == 10.0
+    # Early + late, continuous.
+    b3 = s.compute_hours([(t(6), t(20))])
+    assert (b3.early, b3.late, b3.break_worked, b3.total) == (2.0, 2.0, 2.0, 14.0)
+    # Override forces lunch taken even on a continuous span.
+    b4 = s.compute_hours([(t(8), t(18))], lunch_override=False)
+    assert b4.break_worked == 0.0 and b4.total == 8.0
+    # Override forces lunch worked even though they checked out.
+    b5 = s.compute_hours([(t(8), t(12)), (t(14), t(18))], lunch_override=True)
+    assert b5.break_worked == 2.0 and b5.total == 10.0
 
 
-def test_lunch_worked_marker_credits_break(client, app):
+def test_lunch_override_route(client, app):
     with app.app_context():
         uid = add_user("sam", device_uid="43").id
         sam = db.session.get(User, uid)
-        add_manual_punch(sam, datetime(2026, 3, 2, 8, 0))   # Monday
-        add_manual_punch(sam, datetime(2026, 3, 2, 18, 0))
-        assert sam.sessions()[0].net_hours == 8.0  # lunch deducted by default
+        # Checked out and back in for lunch -> 8h by default (Monday).
+        for h in (8, 12, 14, 18):
+            add_manual_punch(sam, datetime(2026, 3, 2, h, 0))
+        assert db.session.get(User, uid).sessions()[0].net_hours == 8.0
     login(client)
 
-    client.post(f"/employees/{uid}/lunch-worked",
-                data={"date": "2026-03-02"}, follow_redirects=True)
+    client.post(f"/employees/{uid}/lunch",
+                data={"date": "2026-03-02", "state": "worked"}, follow_redirects=True)
     with app.app_context():
         s = db.session.get(User, uid).sessions()[0]
-        assert s.lunch_worked and s.net_hours == 10.0 and s.overtime_hours == 2.0
+        assert s.net_hours == 10.0 and s.overtime_hours == 2.0
 
-    # Toggling again clears it.
-    client.post(f"/employees/{uid}/lunch-worked",
-                data={"date": "2026-03-02"}, follow_redirects=True)
+    client.post(f"/employees/{uid}/lunch",
+                data={"date": "2026-03-02", "state": "auto"}, follow_redirects=True)
     with app.app_context():
         assert db.session.get(User, uid).sessions()[0].net_hours == 8.0
 
@@ -349,9 +372,7 @@ def test_lunch_indicator_in_day_report(app):
         uid = add_user("tina", device_uid="44").id
         tina = db.session.get(User, uid)
         add_manual_punch(tina, datetime(2026, 3, 2, 8, 0))
-        add_manual_punch(tina, datetime(2026, 3, 2, 18, 0))
-        db.session.add(LunchWorked(user_id=uid, work_date=date(2026, 3, 2)))
-        db.session.commit()
+        add_manual_punch(tina, datetime(2026, 3, 2, 18, 0))  # no lunch check
         rep = build_report([db.session.get(User, uid)],
                            date(2026, 3, 2), date(2026, 3, 2),
                            today=date(2026, 3, 31))[0]
@@ -361,16 +382,17 @@ def test_lunch_indicator_in_day_report(app):
 def test_compute_hours_weekend_flat_credit():
     s = Schedule()
     # Saturday 2026-01-03: present for any span -> flat 10h, all overtime.
-    b = s.compute_hours(datetime(2026, 1, 3, 9, 0), datetime(2026, 1, 3, 13, 0))
+    b = s.compute_hours([(datetime(2026, 1, 3, 9, 0), datetime(2026, 1, 3, 13, 0))])
     assert (b.weekend, b.regular, b.extra, b.total) == (10.0, 0.0, 10.0, 10.0)
 
 
 def test_session_exposes_schedule_flags():
-    late_long = Session(datetime(2026, 1, 5, 8, 30), datetime(2026, 1, 5, 19, 0))
+    # Continuous 08:30-19:00 (no lunch check) -> worked through.
+    late_long = Session([datetime(2026, 1, 5, 8, 30), datetime(2026, 1, 5, 19, 0)])
     assert late_long.is_late
-    assert late_long.net_hours == 8.5      # 7.5 regular + 1h after 18:00
-    assert late_long.overtime_hours == 1.0
-    on_time = Session(datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 16, 0))
+    assert late_long.net_hours == 10.5     # 7.5 regular + 1h late + 2h lunch
+    assert late_long.overtime_hours == 3.0
+    on_time = Session([datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 16, 0)])
     assert not on_time.is_late
     assert on_time.is_early_leave          # left before 18:00
 
@@ -394,10 +416,10 @@ def test_offshore_mission_days_and_coverage(app):
 def test_report_flags_present_absent_offshore(app):
     with app.app_context():
         user = add_user("iris", device_uid="80")
-        # Worked Mon 2026-03-02 (08:00-18:00) and Tue 2026-03-03.
+        # Worked Mon 2026-03-02 and Tue 2026-03-03, checking out for lunch.
         for day in (2, 3):
-            add_manual_punch(user, datetime(2026, 3, day, 8, 0))
-            add_manual_punch(user, datetime(2026, 3, day, 18, 0))
+            for h in (8, 12, 14, 18):
+                add_manual_punch(user, datetime(2026, 3, day, h, 0))
         # Offshore Thu-Fri 2026-03-05..06.
         db.session.add(OffshoreMission(
             user_id=user.id, start_date=date(2026, 3, 5), end_date=date(2026, 3, 6),
