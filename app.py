@@ -393,6 +393,39 @@ def register_routes(app):
         flash(f"Updated position for {user.full_name}.", "success")
         return redirect(request.referrer or url_for("employee_detail", user_id=user.id))
 
+    @app.route("/employees/<int:user_id>/account", methods=["POST"])
+    @admin_required
+    def set_account(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            abort(404)
+        new_username = request.form.get("username", "").strip()
+        new_password = request.form.get("password", "")
+        if not new_username:
+            flash("Username can't be empty.", "error")
+            return redirect(url_for("employee_detail", user_id=user.id))
+        clash = User.query.filter(
+            User.username == new_username, User.id != user.id
+        ).first()
+        if clash:
+            flash(f"Username '{new_username}' is already taken.", "error")
+            return redirect(url_for("employee_detail", user_id=user.id))
+
+        changed = []
+        if user.username != new_username:
+            user.username = new_username
+            changed.append("username")
+        if new_password:
+            user.set_password(new_password)
+            changed.append("password")
+        db.session.commit()
+        flash(
+            f"Updated {' and '.join(changed)} for {user.full_name}."
+            if changed else "No changes.",
+            "success",
+        )
+        return redirect(url_for("employee_detail", user_id=user.id))
+
     @app.route("/employees/<int:user_id>/toggle-active", methods=["POST"])
     @admin_required
     def toggle_active(user_id):

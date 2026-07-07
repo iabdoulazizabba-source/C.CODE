@@ -19,6 +19,23 @@
 </div>
 
 <div class="card">
+  <h2>Login account</h2>
+  <p class="muted small">
+    Change this account's username or set a new password. Leave the password
+    blank to keep the current one.
+  </p>
+  <form method="post" action="{{ url_for('set_account', user_id=person.id) }}" class="grid-form">
+    <label>Username
+      <input type="text" name="username" value="{{ person.username }}" required>
+    </label>
+    <label>New password
+      <input type="password" name="password" placeholder="leave blank to keep">
+    </label>
+    <button type="submit">Save account</button>
+  </form>
+</div>
+
+<div class="card">
   <h2>Offshore missions</h2>
   <p class="muted small">
     Days on an offshore mission count as <strong>days present</strong> (not hours)

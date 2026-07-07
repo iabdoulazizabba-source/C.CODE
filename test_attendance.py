@@ -160,6 +160,34 @@ def test_sessions_round_to_whole_minutes(app):
         assert s.clock_out.strftime("%H:%M") == "16:00"
 
 
+def test_set_account_changes_username_and_password(client, app):
+    with app.app_context():
+        uid = add_user("bea", device_uid="45", password="old").id
+        carl_id = add_user("carl", device_uid="46").id
+    login(client)
+
+    client.post(f"/employees/{uid}/account",
+                data={"username": "beatrice", "password": "newpass"},
+                follow_redirects=True)
+    with app.app_context():
+        u = db.session.get(User, uid)
+        assert u.username == "beatrice" and u.check_password("newpass")
+
+    # Blank password keeps the existing one.
+    client.post(f"/employees/{uid}/account",
+                data={"username": "beatrice", "password": ""},
+                follow_redirects=True)
+    with app.app_context():
+        assert db.session.get(User, uid).check_password("newpass")
+
+    # Duplicate username is rejected.
+    client.post(f"/employees/{carl_id}/account",
+                data={"username": "beatrice", "password": ""},
+                follow_redirects=True)
+    with app.app_context():
+        assert db.session.get(User, carl_id).username == "carl"
+
+
 def test_set_position_route(client, app):
     with app.app_context():
         uid = add_user("ralph", device_uid="42").id
