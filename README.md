@@ -49,12 +49,17 @@ weekday is **8 regular hours**. Pay (net) hours = regular + overtime, where
   out for lunch (an admin can override a day to *worked* or *taken*), and
 - a flat **10 hours for any weekend day** (Sat/Sun) the employee is present.
 
+The lunch rule only applies from `LUNCH_SCANNING_FROM` (the date crew began
+checking in/out for lunch). Days **before** it always deduct the lunch, since
+historical data has no lunch scans.
+
 Reports also flag each weekday: **late** (first scan after 08:00 + grace,
 default 10 min) and **left early** (last scan before 18:00 − grace). Weekend
 days are labelled separately.
 
 Override the schedule with `WORK_START`, `WORK_END`, `BREAK_START`, `BREAK_END`,
-`LATE_GRACE_MINUTES`, and `WEEKEND_CREDIT_HOURS` (e.g. `WORK_END=17:00`).
+`LATE_GRACE_MINUTES`, `WEEKEND_CREDIT_HOURS`, and `LUNCH_SCANNING_FROM`
+(e.g. `WORK_END=17:00`, `LUNCH_SCANNING_FROM=2026-07-06`).
 
 ## Features
 

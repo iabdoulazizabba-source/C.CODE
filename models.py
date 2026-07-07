@@ -82,7 +82,10 @@ class User(UserMixin, db.Model):
         overrides = {lo.work_date: lo.worked for lo in self.lunch_overrides}
         for s in sess:
             if s.date in overrides:
-                s.lunch_override = overrides[s.date]
+                s.lunch_override = overrides[s.date]  # admin override wins
+            else:
+                # Deduct lunch on pre-cutover days; auto-detect afterwards.
+                s.lunch_override = DEFAULT_SCHEDULE.lunch_default(s.date)
         return sess
 
     @property

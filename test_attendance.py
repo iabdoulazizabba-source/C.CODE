@@ -399,12 +399,30 @@ def test_lunch_indicator_in_day_report(app):
     with app.app_context():
         uid = add_user("tina", device_uid="44").id
         tina = db.session.get(User, uid)
-        add_manual_punch(tina, datetime(2026, 3, 2, 8, 0))
-        add_manual_punch(tina, datetime(2026, 3, 2, 18, 0))  # no lunch check
+        # After the lunch-scanning cutover; no lunch check -> worked through.
+        add_manual_punch(tina, datetime(2026, 7, 10, 8, 0))
+        add_manual_punch(tina, datetime(2026, 7, 10, 18, 0))
         rep = build_report([db.session.get(User, uid)],
-                           date(2026, 3, 2), date(2026, 3, 2),
-                           today=date(2026, 3, 31))[0]
+                           date(2026, 7, 10), date(2026, 7, 10),
+                           today=date(2026, 7, 31))[0]
         assert rep.days[0].lunch_worked and rep.days[0].overtime == 2.0
+
+
+def test_lunch_cutover_deducts_past_days(app):
+    with app.app_context():
+        uid = add_user("ulric", device_uid="47").id
+        u = db.session.get(User, uid)
+        # Before the 2026-07-06 cutover: 2 scans -> lunch still deducted.
+        add_manual_punch(u, datetime(2026, 6, 15, 8, 0))
+        add_manual_punch(u, datetime(2026, 6, 15, 18, 0))
+        # On/after cutover: 2 scans -> worked through -> +2h.
+        add_manual_punch(u, datetime(2026, 7, 10, 8, 0))
+        add_manual_punch(u, datetime(2026, 7, 10, 18, 0))
+        by_date = {s.date: s for s in db.session.get(User, uid).sessions()}
+        assert by_date[date(2026, 6, 15)].net_hours == 8.0
+        assert not by_date[date(2026, 6, 15)].worked_break
+        assert by_date[date(2026, 7, 10)].net_hours == 10.0
+        assert by_date[date(2026, 7, 10)].worked_break
 
 
 def test_compute_hours_weekend_flat_credit():

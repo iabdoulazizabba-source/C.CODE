@@ -7,7 +7,8 @@ be overridden with environment variables (see ``DEFAULT_SCHEDULE`` below).
 
 import os
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
+from typing import Optional
 
 _MIDNIGHT = time(0, 0)
 
@@ -17,6 +18,13 @@ def _parse_time(value, default):
         hh, mm = value.split(":")
         return time(int(hh), int(mm))
     except (ValueError, AttributeError):
+        return default
+
+
+def _parse_date(value, default):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
         return default
 
 
@@ -57,10 +65,24 @@ class Schedule:
     break_end: time = time(14, 0)
     late_grace_minutes: int = 10
     weekend_credit_hours: float = 10.0  # flat extra for a Sat/Sun present
+    # Date crew began checking in/out for lunch. Before it, lunch is always
+    # deducted (historical data has no lunch scans); on/after it the scan-based
+    # rule applies. None disables the cutover.
+    lunch_scanning_from: Optional[date] = None
 
     # --- day classification ---
     def is_workday(self, day):
         return day.weekday() in self.work_days
+
+    def lunch_default(self, day):
+        """Default lunch handling for a day with no admin override.
+
+        ``False`` (deduct) for days before lunch scanning started; ``None``
+        (decide automatically from the scans) on or after.
+        """
+        if self.lunch_scanning_from and day < self.lunch_scanning_from:
+            return False
+        return None
 
     @property
     def break_hours(self):
@@ -155,4 +177,7 @@ DEFAULT_SCHEDULE = Schedule(
     break_end=_parse_time(os.environ.get("BREAK_END"), time(14, 0)),
     late_grace_minutes=int(os.environ.get("LATE_GRACE_MINUTES", "10")),
     weekend_credit_hours=float(os.environ.get("WEEKEND_CREDIT_HOURS", "10")),
+    lunch_scanning_from=_parse_date(
+        os.environ.get("LUNCH_SCANNING_FROM"), date(2026, 7, 6)
+    ),
 )
