@@ -28,16 +28,14 @@ tag it as in vs out (`punch=255`). So per employee, per calendar day:
 
 - near-identical scans within ~2 minutes are collapsed (fingerprint readers
   often double- or triple-read the same person), then
-- the **first** remaining scan is the clock-in and the **last** is the clock-out
-  ("first-in / last-out"), then
-- the scheduled **lunch break** (12:00–14:00) is deducted to give **net hours**.
+- the remaining scans are paired into **work segments** (in/out, in/out, …), so
+  a lunch check-out/in becomes an unpaid gap, and the segments are summed.
 
 Scan times are rounded to the nearest minute (≥30s up, otherwise down) before
 hours are computed, so totals carry no stray seconds.
 
-A day with only a single scan is shown as an **open / incomplete** session (no
-clock-out) rather than counted as zero hours. Raw punches are stored verbatim,
-so this rule can be refined later without re-reading the device.
+An **odd** number of scans (a missed clock-out) leaves the day open/incomplete.
+Raw punches are stored verbatim, so corrections don't require re-reading device.
 
 ### Work schedule, hours & overtime
 
@@ -47,16 +45,21 @@ weekday is **8 regular hours**. Pay (net) hours = regular + overtime, where
 
 - hours worked **before 08:00**,
 - hours worked **after 18:00**,
-- the **lunch break only when an admin marks the day "lunch worked"** on the
-  employee's page (otherwise the 12:00–14:00 break is unpaid and deducted), and
+- the **12:00–14:00 lunch when it was worked** — i.e. the employee did not check
+  out for lunch (an admin can override a day to *worked* or *taken*), and
 - a flat **10 hours for any weekend day** (Sat/Sun) the employee is present.
+
+The lunch rule only applies from `LUNCH_SCANNING_FROM` (the date crew began
+checking in/out for lunch). Days **before** it always deduct the lunch, since
+historical data has no lunch scans.
 
 Reports also flag each weekday: **late** (first scan after 08:00 + grace,
 default 10 min) and **left early** (last scan before 18:00 − grace). Weekend
 days are labelled separately.
 
 Override the schedule with `WORK_START`, `WORK_END`, `BREAK_START`, `BREAK_END`,
-`LATE_GRACE_MINUTES`, and `WEEKEND_CREDIT_HOURS` (e.g. `WORK_END=17:00`).
+`LATE_GRACE_MINUTES`, `WEEKEND_CREDIT_HOURS`, and `LUNCH_SCANNING_FROM`
+(e.g. `WORK_END=17:00`, `LUNCH_SCANNING_FROM=2026-07-06`).
 
 ## Features
 
@@ -68,8 +71,9 @@ Override the schedule with `WORK_START`, `WORK_END`, `BREAK_START`, `BREAK_END`,
 - **Import users** — create employee accounts straight from the device roster
 - **Employee detail page** with manual **punch corrections** (add a forgotten
   scan; ignore a bad device scan so a re-sync won't restore it)
-- **Offshore missions** — mark date ranges an employee is offshore; counted as
-  days present (not hours) and never flagged as absences
+- **Leave & missions** — mark date ranges as **offshore**, **sick**, or
+  **holiday**; each counts as days (not hours), is shown per-kind in reports and
+  the Today board, and is never flagged as an absence
 - **Device page**: connection status, enrolled users, unmapped IDs, manual sync
 - **Schedule-aware reports** — net hours (after lunch break) plus late /
   left-early / overtime flags per session

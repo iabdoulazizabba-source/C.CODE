@@ -38,9 +38,10 @@ from flask_login import (
 
 from device import DeviceError, connector_from_config
 from models import (
+    LEAVE_KINDS,
     AttendancePunch,
-    LunchWorked,
-    OffshoreMission,
+    Leave,
+    LunchOverride,
     User,
     add_manual_punch,
     db,
@@ -138,6 +139,24 @@ def _ensure_schema():
             text('ALTER TABLE "user" ADD COLUMN position VARCHAR(80)')
         )
         changed = True
+
+    if "lunch_worked" in inspector.get_table_names():
+        lunch_cols = {c["name"] for c in inspector.get_columns("lunch_worked")}
+        if "worked" not in lunch_cols:
+            db.session.execute(
+                text("ALTER TABLE lunch_worked "
+                     "ADD COLUMN worked BOOLEAN NOT NULL DEFAULT 1")
+            )
+            changed = True
+
+    if "offshore_mission" in inspector.get_table_names():
+        leave_cols = {c["name"] for c in inspector.get_columns("offshore_mission")}
+        if "kind" not in leave_cols:
+            db.session.execute(
+                text("ALTER TABLE offshore_mission "
+                     "ADD COLUMN kind VARCHAR(16) NOT NULL DEFAULT 'offshore'")
+            )
+            changed = True
 
     if changed:
         db.session.commit()
@@ -384,6 +403,39 @@ def register_routes(app):
         flash(f"Updated position for {user.full_name}.", "success")
         return redirect(request.referrer or url_for("employee_detail", user_id=user.id))
 
+    @app.route("/employees/<int:user_id>/account", methods=["POST"])
+    @admin_required
+    def set_account(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            abort(404)
+        new_username = request.form.get("username", "").strip()
+        new_password = request.form.get("password", "")
+        if not new_username:
+            flash("Username can't be empty.", "error")
+            return redirect(url_for("employee_detail", user_id=user.id))
+        clash = User.query.filter(
+            User.username == new_username, User.id != user.id
+        ).first()
+        if clash:
+            flash(f"Username '{new_username}' is already taken.", "error")
+            return redirect(url_for("employee_detail", user_id=user.id))
+
+        changed = []
+        if user.username != new_username:
+            user.username = new_username
+            changed.append("username")
+        if new_password:
+            user.set_password(new_password)
+            changed.append("password")
+        db.session.commit()
+        flash(
+            f"Updated {' and '.join(changed)} for {user.full_name}."
+            if changed else "No changes.",
+            "success",
+        )
+        return redirect(url_for("employee_detail", user_id=user.id))
+
     @app.route("/employees/<int:user_id>/toggle-active", methods=["POST"])
     @admin_required
     def toggle_active(user_id):
@@ -424,7 +476,8 @@ def register_routes(app):
             person=user,
             sessions=user.sessions()[:30],
             punches=punches,
-            missions=user.missions,
+            leaves=user.leaves,
+            leave_kinds=LEAVE_KINDS,
         )
 
     @app.route("/employees/<int:user_id>/punches/add", methods=["POST"])
@@ -464,9 +517,9 @@ def register_routes(app):
             request.referrer or url_for("employee_detail", user_id=user_id)
         )
 
-    @app.route("/employees/<int:user_id>/lunch-worked", methods=["POST"])
+    @app.route("/employees/<int:user_id>/lunch", methods=["POST"])
     @admin_required
-    def toggle_lunch(user_id):
+    def set_lunch(user_id):
         user = db.session.get(User, user_id)
         if user is None:
             abort(404)
@@ -475,16 +528,22 @@ def register_routes(app):
         except ValueError:
             flash("Invalid date.", "error")
             return redirect(url_for("employee_detail", user_id=user.id))
-        existing = LunchWorked.query.filter_by(
-            user_id=user.id, work_date=day
-        ).first()
-        if existing:
-            db.session.delete(existing)
-            flash(f"Lunch on {day} no longer counted as worked.", "success")
+        state = request.form.get("state", "auto")
+        row = LunchOverride.query.filter_by(user_id=user.id, work_date=day).first()
+        if state == "auto":
+            if row:
+                db.session.delete(row)
+            message = "auto (from scans)"
         else:
-            db.session.add(LunchWorked(user_id=user.id, work_date=day))
-            flash(f"Lunch on {day} credited as worked (+2h).", "success")
+            worked = state == "worked"
+            if row:
+                row.worked = worked
+            else:
+                db.session.add(LunchOverride(user_id=user.id, work_date=day,
+                                             worked=worked))
+            message = "worked (+2h)" if worked else "taken (deducted)"
         db.session.commit()
+        flash(f"Lunch for {day}: {message}.", "success")
         return redirect(url_for("employee_detail", user_id=user.id))
 
     @app.route("/punches/<int:punch_id>/restore", methods=["POST"])
@@ -500,12 +559,15 @@ def register_routes(app):
             request.referrer or url_for("employee_detail", user_id=punch.user_id)
         )
 
-    @app.route("/employees/<int:user_id>/missions/add", methods=["POST"])
+    @app.route("/employees/<int:user_id>/leaves/add", methods=["POST"])
     @admin_required
-    def add_mission(user_id):
+    def add_leave(user_id):
         user = db.session.get(User, user_id)
         if user is None:
             abort(404)
+        kind = request.form.get("kind", "offshore")
+        if kind not in LEAVE_KINDS:
+            kind = "offshore"
         try:
             start = datetime.strptime(
                 request.form.get("start_date", ""), "%Y-%m-%d"
@@ -520,28 +582,29 @@ def register_routes(app):
             flash("End date can't be before start date.", "error")
         else:
             db.session.add(
-                OffshoreMission(
+                Leave(
                     user_id=user.id,
                     start_date=start,
                     end_date=end,
+                    kind=kind,
                     note=request.form.get("note", "").strip() or None,
                 )
             )
             db.session.commit()
-            flash(f"Offshore mission added ({(end - start).days + 1} day(s)).",
+            flash(f"{kind.title()} added ({(end - start).days + 1} day(s)).",
                   "success")
         return redirect(url_for("employee_detail", user_id=user.id))
 
-    @app.route("/missions/<int:mission_id>/delete", methods=["POST"])
+    @app.route("/leaves/<int:leave_id>/delete", methods=["POST"])
     @admin_required
-    def delete_mission(mission_id):
-        mission = db.session.get(OffshoreMission, mission_id)
-        if mission is None:
+    def delete_leave(leave_id):
+        leave = db.session.get(Leave, leave_id)
+        if leave is None:
             abort(404)
-        user_id = mission.user_id
-        db.session.delete(mission)
+        user_id = leave.user_id
+        db.session.delete(leave)
         db.session.commit()
-        flash("Offshore mission removed.", "success")
+        flash("Entry removed.", "success")
         return redirect(url_for("employee_detail", user_id=user_id))
 
     @app.route("/reports")
@@ -593,12 +656,14 @@ def register_routes(app):
         else:
             writer.writerow(["Employee", "Net hours", "Overtime", "Present days",
                              "Weekend days", "Incomplete", "Late days",
-                             "Absent days", "Offshore days"])
+                             "Absent days", "Offshore days", "Sick days",
+                             "Holiday days"])
             for rep in reports:
                 writer.writerow([
                     rep.name, round_hours(rep.net_hours), round_hours(rep.overtime),
                     rep.present_days, rep.weekend_days, rep.incomplete_days,
                     rep.late_days, rep.absent_days, rep.offshore_days,
+                    rep.sick_days, rep.holiday_days,
                 ])
 
         filename = f"timesheet_{start.isoformat()}_{end.isoformat()}_{kind}.csv"

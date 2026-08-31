@@ -14,29 +14,48 @@
     <tr><th>Username</th><td>{{ person.username }}</td></tr>
     <tr><th>Role</th><td><span class="badge badge-{{ person.role }}">{{ person.role }}</span></td></tr>
     <tr><th>Device ID</th><td>{{ person.device_uid or "—" }}</td></tr>
-    <tr><th>Offshore days</th><td>{{ person.offshore_days }}</td></tr>
+    <tr><th>Offshore / sick / holiday days</th>
+      <td>{{ person.offshore_days }} / {{ person.sick_days }} / {{ person.holiday_days }}</td></tr>
   </table>
 </div>
 
 <div class="card">
-  <h2>Offshore missions</h2>
+  <h2>Login account</h2>
   <p class="muted small">
-    Days on an offshore mission count as <strong>days present</strong> (not hours)
-    and are never flagged as absences.
+    Change this account's username or set a new password. Leave the password
+    blank to keep the current one.
   </p>
-  {% if missions %}
+  <form method="post" action="{{ url_for('set_account', user_id=person.id) }}" class="grid-form">
+    <label>Username
+      <input type="text" name="username" value="{{ person.username }}" required>
+    </label>
+    <label>New password
+      <input type="password" name="password" placeholder="leave blank to keep">
+    </label>
+    <button type="submit">Save account</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Leave &amp; missions</h2>
+  <p class="muted small">
+    Offshore missions, sick leave and holidays. Each counts as
+    <strong>days</strong> (not hours) and is never flagged as an absence.
+  </p>
+  {% if leaves %}
   <table>
-    <thead><tr><th>From</th><th>To</th><th>Days</th><th>Note</th><th></th></tr></thead>
+    <thead><tr><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Note</th><th></th></tr></thead>
     <tbody>
-      {% for m in missions %}
+      {% for lv in leaves %}
       <tr>
-        <td>{{ m.start_date }}</td>
-        <td>{{ m.end_date }}</td>
-        <td>{{ m.days }}</td>
-        <td>{{ m.note or "" }}</td>
+        <td><span class="badge badge-{{ lv.kind }}">{{ lv.label }}</span></td>
+        <td>{{ lv.start_date }}</td>
+        <td>{{ lv.end_date }}</td>
+        <td>{{ lv.days }}</td>
+        <td>{{ lv.note or "" }}</td>
         <td>
-          <form method="post" action="{{ url_for('delete_mission', mission_id=m.id) }}"
-                onsubmit="return confirm('Remove this mission?');">
+          <form method="post" action="{{ url_for('delete_leave', leave_id=lv.id) }}"
+                onsubmit="return confirm('Remove this entry?');">
             <button type="submit" class="link-danger">Remove</button>
           </form>
         </td>
@@ -45,24 +64,32 @@
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No offshore missions recorded.</p>
+  <p class="muted">No offshore missions, sick leave or holidays recorded.</p>
   {% endif %}
 
-  <form method="post" action="{{ url_for('add_mission', user_id=person.id) }}"
+  <form method="post" action="{{ url_for('add_leave', user_id=person.id) }}"
         class="grid-form" style="margin-top:1rem;">
+    <label>Type
+      <select name="kind">
+        {% for k in leave_kinds %}
+        <option value="{{ k }}">{{ k|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </label>
     <label>Start date <input type="date" name="start_date" required></label>
     <label>End date <input type="date" name="end_date" required></label>
     <label>Note <span class="muted">(optional)</span>
       <input type="text" name="note" placeholder="e.g. FPSO Kribi rotation"></label>
-    <button type="submit">Add mission</button>
+    <button type="submit">Add</button>
   </form>
 </div>
 
 <div class="card">
   <h2>Work sessions</h2>
   <p class="muted small">
-    Net hours deduct the 12:00–14:00 lunch unless a weekday is marked
-    <strong>lunch worked</strong> (credits the 2h as overtime).
+    Lunch is decided from the scans: if the crew member checked out and back in
+    for lunch it's unpaid; if they didn't (no lunch scan) the 12:00–14:00 counts
+    as overtime. Use the <strong>Lunch</strong> control to override a day.
   </p>
   {% if sessions %}
   <table>
@@ -78,13 +105,13 @@
           {% if s.is_weekend or s.is_open %}
             <span class="muted">—</span>
           {% else %}
-          <form method="post" action="{{ url_for('toggle_lunch', user_id=person.id) }}" class="inline-form">
+          <form method="post" action="{{ url_for('set_lunch', user_id=person.id) }}" class="inline-form">
             <input type="hidden" name="date" value="{{ s.clock_in.strftime('%Y-%m-%d') }}">
-            {% if s.lunch_worked %}
-            <button type="submit" class="small-btn" title="Click to clear">✓ worked</button>
-            {% else %}
-            <button type="submit" class="small-btn secondary">mark worked</button>
-            {% endif %}
+            <select name="state" onchange="this.form.submit()">
+              <option value="auto" {% if s.lunch_override is none %}selected{% endif %}>auto ({{ 'worked' if s.worked_break else 'taken' }})</option>
+              <option value="worked" {% if s.lunch_override == true %}selected{% endif %}>worked</option>
+              <option value="taken" {% if s.lunch_override == false %}selected{% endif %}>taken</option>
+            </select>
           </form>
           {% endif %}
         </td>

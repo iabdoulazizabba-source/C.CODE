@@ -13,7 +13,7 @@ from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from schedule import DEFAULT_SCHEDULE
+from schedule import DEFAULT_SCHEDULE, HoursBreakdown
 
 db = SQLAlchemy()
 
@@ -51,14 +51,14 @@ class User(UserMixin, db.Model):
     punches = db.relationship(
         "AttendancePunch", backref="user", cascade="all, delete-orphan"
     )
-    missions = db.relationship(
-        "OffshoreMission",
+    leaves = db.relationship(
+        "Leave",
         backref="user",
         cascade="all, delete-orphan",
-        order_by="OffshoreMission.start_date.desc()",
+        order_by="Leave.start_date.desc()",
     )
-    lunch_days = db.relationship(
-        "LunchWorked", backref="user", cascade="all, delete-orphan"
+    lunch_overrides = db.relationship(
+        "LunchOverride", backref="user", cascade="all, delete-orphan"
     )
 
     def set_password(self, password):
@@ -75,22 +75,43 @@ class User(UserMixin, db.Model):
         """Daily work sessions for this user (most recent first).
 
         Punches flagged ``ignored`` (corrected away by an admin) are skipped.
-        Days marked as worked-through-lunch credit the break as overtime.
+        Any admin lunch override for a day is applied to its session.
         """
         active = [p for p in self.punches if not p.ignored]
         sess = build_sessions(sorted(active, key=lambda p: p.timestamp))
-        lunch_dates = {lw.work_date for lw in self.lunch_days}
+        overrides = {lo.work_date: lo.worked for lo in self.lunch_overrides}
         for s in sess:
-            s.lunch_worked = s.date in lunch_dates
+            if s.date in overrides:
+                s.lunch_override = overrides[s.date]  # admin override wins
+            else:
+                # Deduct lunch on pre-cutover days; auto-detect afterwards.
+                s.lunch_override = DEFAULT_SCHEDULE.lunch_default(s.date)
         return sess
+
+    def leave_kind_on(self, day):
+        """The leave kind (offshore/sick/holiday) covering ``day``, or None."""
+        for lv in self.leaves:
+            if lv.covers(day):
+                return lv.kind
+        return None
+
+    def leave_days(self, kind):
+        return sum(lv.days for lv in self.leaves if lv.kind == kind)
 
     @property
     def offshore_days(self):
-        """Total days marked as offshore missions for this user."""
-        return sum(m.days for m in self.missions)
+        return self.leave_days("offshore")
+
+    @property
+    def sick_days(self):
+        return self.leave_days("sick")
+
+    @property
+    def holiday_days(self):
+        return self.leave_days("holiday")
 
     def is_offshore_on(self, day):
-        return any(m.covers(day) for m in self.missions)
+        return self.leave_kind_on(day) == "offshore"
 
     @property
     def last_punch_at(self):
@@ -131,11 +152,16 @@ class AttendancePunch(db.Model):
     ignored = db.Column(db.Boolean, nullable=False, default=False)
 
 
-class OffshoreMission(db.Model):
-    """A date range an employee spent on an offshore mission.
+LEAVE_KINDS = ("offshore", "sick", "holiday")
+LEAVE_LABELS = {"offshore": "Offshore", "sick": "Sick", "holiday": "Holiday"}
 
-    Offshore days are counted as *days present* (not hours) and must not be
-    treated as absences when away from the terminal.
+
+class Leave(db.Model):
+    """A date range an employee is away but excused: an offshore mission, sick
+    leave, or holiday.
+
+    Counted as *days* (per kind), never as worked hours, and never treated as
+    an absence. Kept in the legacy ``offshore_mission`` table.
     """
 
     __tablename__ = "offshore_mission"
@@ -145,21 +171,27 @@ class OffshoreMission(db.Model):
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
     note = db.Column(db.String(200))
+    kind = db.Column(db.String(16), nullable=False, default="offshore")
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     @property
     def days(self):
         return (self.end_date - self.start_date).days + 1
 
+    @property
+    def label(self):
+        return LEAVE_LABELS.get(self.kind, self.kind.title())
+
     def covers(self, day):
         return self.start_date <= day <= self.end_date
 
 
-class LunchWorked(db.Model):
-    """Marks a day an employee worked through the 12:00-14:00 lunch.
+class LunchOverride(db.Model):
+    """Admin override of a day's lunch handling.
 
-    When present, those 2 hours are credited as overtime instead of being
-    deducted. Set/cleared manually by an admin.
+    ``worked=True`` credits the 12:00-14:00 break as overtime; ``worked=False``
+    forces it deducted. With no row for a day, the app decides automatically
+    from the scans (did the employee check out for lunch?).
     """
 
     __tablename__ = "lunch_worked"
@@ -170,33 +202,45 @@ class LunchWorked(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     work_date = db.Column(db.Date, nullable=False)
+    worked = db.Column(db.Boolean, nullable=False, default=True)
 
 
 class Session:
-    """A derived clock-in / clock-out pair (not stored in the DB).
+    """One day's attendance, derived from its de-duplicated scans.
 
-    ``hours`` is the raw on-site span. ``net_hours`` is the paid total
-    (regular in-window hours plus extra: pre-start, post-end, worked lunch,
-    or a flat weekend credit). ``scan_times`` are the day's de-duplicated
-    scans, used to tell whether the lunch break was worked.
+    Scans are paired into work *segments* (in/out, in/out, ...). An even count
+    is fully paired; an odd count leaves the day *open* (someone forgot to
+    scan out). ``net_hours`` is the paid total: regular in-window hours plus
+    overtime (before 08:00, after 18:00, and the lunch when worked), or a flat
+    weekend credit. ``lunch_override`` (True/False/None) is an admin override.
     """
 
-    def __init__(self, clock_in, clock_out=None, scan_times=None,
-                 lunch_worked=False):
-        self.clock_in = clock_in
-        self.clock_out = clock_out
-        self.scan_times = scan_times or [
-            t for t in (clock_in, clock_out) if t is not None
+    def __init__(self, scans, lunch_override=None):
+        self.scans = list(scans)
+        self.lunch_override = lunch_override
+
+    @property
+    def segments(self):
+        return [
+            (self.scans[i], self.scans[i + 1])
+            for i in range(0, len(self.scans) - 1, 2)
         ]
-        self.lunch_worked = lunch_worked
 
     @property
     def is_open(self):
-        return self.clock_out is None
+        return len(self.scans) % 2 == 1
+
+    @property
+    def clock_in(self):
+        return self.scans[0]
+
+    @property
+    def clock_out(self):
+        return None if self.is_open else self.scans[-1]
 
     @property
     def date(self):
-        return self.clock_in.date()
+        return self.scans[0].date()
 
     @property
     def is_weekend(self):
@@ -204,14 +248,20 @@ class Session:
 
     @property
     def hours(self):
-        if self.clock_out is None:
-            return 0.0
-        return round((self.clock_out - self.clock_in).total_seconds() / 3600, 2)
+        """Total on-clock hours (sum of segment durations, lunch excluded)."""
+        return round(
+            sum((o - i).total_seconds() for i, o in self.segments) / 3600, 2
+        )
 
     @property
     def breakdown(self):
+        # Weekend presence with only a single (open) scan still earns credit.
+        if self.is_weekend and self.scans and not self.segments:
+            return HoursBreakdown(
+                weekend=round(float(DEFAULT_SCHEDULE.weekend_credit_hours), 2)
+            )
         return DEFAULT_SCHEDULE.compute_hours(
-            self.clock_in, self.clock_out, lunch_worked=self.lunch_worked
+            self.segments, lunch_override=self.lunch_override
         )
 
     @property
@@ -269,10 +319,10 @@ def round_to_minute(dt):
 def build_sessions(punches, dedup_minutes=DEFAULT_DEDUP_MINUTES):
     """Derive one work session per calendar day (most recent first).
 
-    The F18 doesn't tag scans as in/out (punch=255), so for each day we
-    de-duplicate near-identical scans, then take the first scan as
-    clock-in and the last as clock-out ("first-in / last-out"). A day
-    with a single scan is an open/incomplete session (no clock-out).
+    Each day's scans are de-duplicated and rounded to the minute, then handed
+    to :class:`Session`, which pairs them into in/out work segments (so a
+    lunch check-out/in becomes an unpaid gap). An odd number of scans leaves
+    the day open (a missed clock-out).
     """
     by_day = defaultdict(list)
     for punch in punches:
@@ -284,8 +334,7 @@ def build_sessions(punches, dedup_minutes=DEFAULT_DEDUP_MINUTES):
         if not times:
             continue
         times = [round_to_minute(t) for t in times]  # whole-minute precision
-        clock_out = times[-1] if len(times) > 1 else None
-        sessions.append(Session(times[0], clock_out, scan_times=times))
+        sessions.append(Session(times))
     sessions.reverse()
     return sessions
 

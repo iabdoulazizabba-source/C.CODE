@@ -41,7 +41,8 @@
     <thead>
       <tr>
         <th>Employee</th><th>Position</th><th>Net h</th><th>OT h</th><th>Present</th>
-        <th>Weekend</th><th>Late</th><th>Absent</th><th>Offshore</th><th>Incomplete</th>
+        <th>Weekend</th><th>Late</th><th>Absent</th><th>Offshore</th>
+        <th>Sick</th><th>Holiday</th><th>Incomplete</th>
       </tr>
     </thead>
     <tbody>
@@ -52,10 +53,12 @@
         <td>{{ r.net_hours|hours }}</td>
         <td>{% if r.overtime %}<strong>{{ r.overtime|hours }}</strong>{% else %}—{% endif %}</td>
         <td>{{ r.present_days }}</td>
-        <td>{% if r.weekend_days %}<span class="badge badge-offshore">{{ r.weekend_days }}</span>{% else %}0{% endif %}</td>
+        <td>{% if r.weekend_days %}<span class="badge badge-ot">{{ r.weekend_days }}</span>{% else %}0{% endif %}</td>
         <td>{% if r.late_days %}<span class="badge badge-late">{{ r.late_days }}</span>{% else %}0{% endif %}</td>
         <td>{% if r.absent_days %}<span class="badge badge-late">{{ r.absent_days }}</span>{% else %}0{% endif %}</td>
-        <td>{{ r.offshore_days }}</td>
+        <td>{% if r.offshore_days %}<span class="badge badge-offshore">{{ r.offshore_days }}</span>{% else %}0{% endif %}</td>
+        <td>{% if r.sick_days %}<span class="badge badge-sick">{{ r.sick_days }}</span>{% else %}0{% endif %}</td>
+        <td>{% if r.holiday_days %}<span class="badge badge-holiday">{{ r.holiday_days }}</span>{% else %}0{% endif %}</td>
         <td>{% if r.incomplete_days %}<span class="badge badge-open">{{ r.incomplete_days }}</span>{% else %}0{% endif %}</td>
       </tr>
       {% endfor %}
@@ -76,13 +79,15 @@
     </thead>
     <tbody>
       {% for d in detail.days %}
-      <tr class="{% if d.status == 'absent' %}row-absent{% elif d.status in ('offshore', 'weekend') %}row-offshore{% endif %}">
+      <tr class="{% if d.status == 'absent' %}row-absent{% elif d.status in ('offshore', 'sick', 'holiday', 'weekend') %}row-offshore{% endif %}">
         <td>{{ d.day.isoformat() }}</td>
         <td>{{ d.weekday }}</td>
         <td>
           {% if d.status == 'present' %}present
           {% elif d.status == 'weekend' %}<span class="badge badge-ot">weekend</span>
           {% elif d.status == 'offshore' %}<span class="badge badge-offshore">offshore</span>
+          {% elif d.status == 'sick' %}<span class="badge badge-sick">sick</span>
+          {% elif d.status == 'holiday' %}<span class="badge badge-holiday">holiday</span>
           {% elif d.status == 'absent' %}<span class="badge badge-late">absent</span>
           {% else %}<span class="badge badge-open">incomplete</span>{% endif %}
         </td>

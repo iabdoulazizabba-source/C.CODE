@@ -196,6 +196,8 @@ table form { margin: 0; }
 .badge-ot { background: #ebfbee; color: var(--ok); }
 .badge-open { background: #f1f3f5; color: var(--muted); }
 .badge-offshore { background: #e7f5ff; color: var(--brand); }
+.badge-sick { background: #fff4e6; color: #b8560f; }
+.badge-holiday { background: #f3e8ff; color: #6b2fb3; }
 .badge + .badge { margin-left: 0.25rem; }
 
 .row-absent td { background: #fff7f7; }
