@@ -51,11 +51,11 @@ class User(UserMixin, db.Model):
     punches = db.relationship(
         "AttendancePunch", backref="user", cascade="all, delete-orphan"
     )
-    missions = db.relationship(
-        "OffshoreMission",
+    leaves = db.relationship(
+        "Leave",
         backref="user",
         cascade="all, delete-orphan",
-        order_by="OffshoreMission.start_date.desc()",
+        order_by="Leave.start_date.desc()",
     )
     lunch_overrides = db.relationship(
         "LunchOverride", backref="user", cascade="all, delete-orphan"
@@ -88,13 +88,30 @@ class User(UserMixin, db.Model):
                 s.lunch_override = DEFAULT_SCHEDULE.lunch_default(s.date)
         return sess
 
+    def leave_kind_on(self, day):
+        """The leave kind (offshore/sick/holiday) covering ``day``, or None."""
+        for lv in self.leaves:
+            if lv.covers(day):
+                return lv.kind
+        return None
+
+    def leave_days(self, kind):
+        return sum(lv.days for lv in self.leaves if lv.kind == kind)
+
     @property
     def offshore_days(self):
-        """Total days marked as offshore missions for this user."""
-        return sum(m.days for m in self.missions)
+        return self.leave_days("offshore")
+
+    @property
+    def sick_days(self):
+        return self.leave_days("sick")
+
+    @property
+    def holiday_days(self):
+        return self.leave_days("holiday")
 
     def is_offshore_on(self, day):
-        return any(m.covers(day) for m in self.missions)
+        return self.leave_kind_on(day) == "offshore"
 
     @property
     def last_punch_at(self):
@@ -135,11 +152,16 @@ class AttendancePunch(db.Model):
     ignored = db.Column(db.Boolean, nullable=False, default=False)
 
 
-class OffshoreMission(db.Model):
-    """A date range an employee spent on an offshore mission.
+LEAVE_KINDS = ("offshore", "sick", "holiday")
+LEAVE_LABELS = {"offshore": "Offshore", "sick": "Sick", "holiday": "Holiday"}
 
-    Offshore days are counted as *days present* (not hours) and must not be
-    treated as absences when away from the terminal.
+
+class Leave(db.Model):
+    """A date range an employee is away but excused: an offshore mission, sick
+    leave, or holiday.
+
+    Counted as *days* (per kind), never as worked hours, and never treated as
+    an absence. Kept in the legacy ``offshore_mission`` table.
     """
 
     __tablename__ = "offshore_mission"
@@ -149,11 +171,16 @@ class OffshoreMission(db.Model):
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
     note = db.Column(db.String(200))
+    kind = db.Column(db.String(16), nullable=False, default="offshore")
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     @property
     def days(self):
         return (self.end_date - self.start_date).days + 1
+
+    @property
+    def label(self):
+        return LEAVE_LABELS.get(self.kind, self.kind.title())
 
     def covers(self, day):
         return self.start_date <= day <= self.end_date

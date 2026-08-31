@@ -45,6 +45,8 @@ class EmployeeReport:
     late_days: int = 0
     absent_days: int = 0
     offshore_days: int = 0
+    sick_days: int = 0
+    holiday_days: int = 0
     weekend_days: int = 0
 
 
@@ -94,9 +96,10 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
                 report.overtime += session.overtime_hours
                 if session.is_late:
                     report.late_days += 1
-            elif user.is_offshore_on(day):
-                report.days.append(DayRecord(day, "offshore"))
-                report.offshore_days += 1
+            elif (kind := user.leave_kind_on(day)):  # offshore | sick | holiday
+                report.days.append(DayRecord(day, kind))
+                setattr(report, f"{kind}_days",
+                        getattr(report, f"{kind}_days") + 1)
             elif schedule.is_workday(day):
                 report.days.append(DayRecord(day, "absent"))
                 report.absent_days += 1
@@ -130,11 +133,15 @@ class TodayBoard:
     checked_out: int = 0
     not_arrived: int = 0
     offshore: int = 0
+    on_leave: int = 0  # sick + holiday
     late: int = 0
 
 
 # Order statuses so "who's here / who's missing" reads top-down.
-_TODAY_ORDER = {"on_site": 0, "not_arrived": 1, "checked_out": 2, "offshore": 3}
+_TODAY_ORDER = {
+    "on_site": 0, "not_arrived": 1, "checked_out": 2,
+    "offshore": 3, "sick": 4, "holiday": 5,
+}
 
 
 def build_today(users, schedule=DEFAULT_SCHEDULE, today=None):
@@ -144,9 +151,13 @@ def build_today(users, schedule=DEFAULT_SCHEDULE, today=None):
     board = TodayBoard(day=today, is_workday=is_workday)
 
     for user in users:
-        if user.is_offshore_on(today):
-            board.rows.append(TodayRow(user.id, user.full_name, "offshore"))
-            board.offshore += 1
+        kind = user.leave_kind_on(today)
+        if kind:  # offshore | sick | holiday
+            board.rows.append(TodayRow(user.id, user.full_name, kind))
+            if kind == "offshore":
+                board.offshore += 1
+            else:
+                board.on_leave += 1
             continue
 
         session = next((s for s in user.sessions() if s.date == today), None)

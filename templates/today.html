@@ -20,6 +20,9 @@
     <div class="stat stat-info">
       <div class="stat-num">{{ board.offshore }}</div><div class="stat-label">Offshore</div>
     </div>
+    <div class="stat stat-info">
+      <div class="stat-num">{{ board.on_leave }}</div><div class="stat-label">Sick / holiday</div>
+    </div>
     <div class="stat stat-late">
       <div class="stat-num">{{ board.late }}</div><div class="stat-label">Late today</div>
     </div>
@@ -39,6 +42,8 @@
           {% if r.status == 'on_site' %}<span class="badge badge-ot">on site</span>
           {% elif r.status == 'not_arrived' %}<span class="badge badge-late">not arrived</span>
           {% elif r.status == 'offshore' %}<span class="badge badge-offshore">offshore</span>
+          {% elif r.status == 'sick' %}<span class="badge badge-sick">sick</span>
+          {% elif r.status == 'holiday' %}<span class="badge badge-holiday">holiday</span>
           {% else %}<span class="badge badge-open">checked out</span>{% endif %}
           {% if r.late %}<span class="badge badge-late">late</span>{% endif %}
         </td>

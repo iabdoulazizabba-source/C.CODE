@@ -71,8 +71,9 @@ Override the schedule with `WORK_START`, `WORK_END`, `BREAK_START`, `BREAK_END`,
 - **Import users** — create employee accounts straight from the device roster
 - **Employee detail page** with manual **punch corrections** (add a forgotten
   scan; ignore a bad device scan so a re-sync won't restore it)
-- **Offshore missions** — mark date ranges an employee is offshore; counted as
-  days present (not hours) and never flagged as absences
+- **Leave & missions** — mark date ranges as **offshore**, **sick**, or
+  **holiday**; each counts as days (not hours), is shown per-kind in reports and
+  the Today board, and is never flagged as an absence
 - **Device page**: connection status, enrolled users, unmapped IDs, manual sync
 - **Schedule-aware reports** — net hours (after lunch break) plus late /
   left-early / overtime flags per session

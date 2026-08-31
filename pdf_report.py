@@ -34,15 +34,17 @@ WHITE = (255, 255, 255)
 # Summary columns: (heading, width mm, formatter) — widths fit A4 portrait
 # (usable width ~190mm).
 SUMMARY_COLS = [
-    ("Employee", 38, lambda r: r.name),
-    ("Position", 30, lambda r: r.position or "-"),
-    ("Net h", 18, lambda r: str(round_hours(r.net_hours))),
-    ("OT h", 16, lambda r: str(round_hours(r.overtime))),
-    ("Present", 18, lambda r: str(r.present_days)),
-    ("Weekend", 20, lambda r: str(r.weekend_days)),
-    ("Late", 14, lambda r: str(r.late_days)),
-    ("Absent", 16, lambda r: str(r.absent_days)),
+    ("Employee", 32, lambda r: r.name),
+    ("Position", 24, lambda r: r.position or "-"),
+    ("Net h", 15, lambda r: str(round_hours(r.net_hours))),
+    ("OT h", 13, lambda r: str(round_hours(r.overtime))),
+    ("Present", 16, lambda r: str(r.present_days)),
+    ("Weekend", 17, lambda r: str(r.weekend_days)),
+    ("Late", 12, lambda r: str(r.late_days)),
+    ("Absent", 14, lambda r: str(r.absent_days)),
     ("Offshore", 16, lambda r: str(r.offshore_days)),
+    ("Sick", 12, lambda r: str(r.sick_days)),
+    ("Holiday", 16, lambda r: str(r.holiday_days)),
 ]
 
 DAY_COLS = [

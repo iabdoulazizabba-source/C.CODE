@@ -11,7 +11,7 @@ from reporting import build_report, build_today
 from schedule import DEFAULT_SCHEDULE, Schedule, round_hours
 from models import (
     AttendancePunch,
-    OffshoreMission,
+    Leave,
     User,
     add_manual_punch,
     build_sessions,
@@ -443,20 +443,46 @@ def test_session_exposes_schedule_flags():
     assert on_time.is_early_leave          # left before 18:00
 
 
-def test_offshore_mission_days_and_coverage(app):
+def test_leave_days_and_coverage(app):
     with app.app_context():
         user = add_user("gwen")
-        db.session.add(OffshoreMission(
-            user_id=user.id,
-            start_date=date(2026, 3, 1),
-            end_date=date(2026, 3, 10),
-            note="rig",
+        db.session.add(Leave(
+            user_id=user.id, kind="offshore",
+            start_date=date(2026, 3, 1), end_date=date(2026, 3, 10), note="rig",
+        ))
+        db.session.add(Leave(
+            user_id=user.id, kind="sick",
+            start_date=date(2026, 3, 12), end_date=date(2026, 3, 13),
+        ))
+        db.session.add(Leave(
+            user_id=user.id, kind="holiday",
+            start_date=date(2026, 3, 20), end_date=date(2026, 3, 24),
         ))
         db.session.commit()
         gwen = User.query.filter_by(username="gwen").first()
         assert gwen.offshore_days == 10
+        assert gwen.sick_days == 2
+        assert gwen.holiday_days == 5
+        assert gwen.leave_kind_on(date(2026, 3, 5)) == "offshore"
+        assert gwen.leave_kind_on(date(2026, 3, 12)) == "sick"
+        assert gwen.leave_kind_on(date(2026, 3, 22)) == "holiday"
+        assert gwen.leave_kind_on(date(2026, 3, 11)) is None
         assert gwen.is_offshore_on(date(2026, 3, 5))
-        assert not gwen.is_offshore_on(date(2026, 3, 11))
+
+
+def test_add_leave_route(client, app):
+    with app.app_context():
+        uid = add_user("vera", device_uid="48").id
+    login(client)
+    client.post(
+        f"/employees/{uid}/leaves/add",
+        data={"kind": "holiday", "start_date": "2026-07-13",
+              "end_date": "2026-07-17"},
+        follow_redirects=True,
+    )
+    with app.app_context():
+        v = db.session.get(User, uid)
+        assert v.holiday_days == 5 and v.leaves[0].kind == "holiday"
 
 
 def test_report_flags_present_absent_offshore(app):
@@ -466,9 +492,14 @@ def test_report_flags_present_absent_offshore(app):
         for day in (2, 3):
             for h in (8, 12, 14, 18):
                 add_manual_punch(user, datetime(2026, 3, day, h, 0))
-        # Offshore Thu-Fri 2026-03-05..06.
-        db.session.add(OffshoreMission(
-            user_id=user.id, start_date=date(2026, 3, 5), end_date=date(2026, 3, 6),
+        # Offshore Thu 2026-03-05, sick Fri 2026-03-06.
+        db.session.add(Leave(
+            user_id=user.id, kind="offshore",
+            start_date=date(2026, 3, 5), end_date=date(2026, 3, 5),
+        ))
+        db.session.add(Leave(
+            user_id=user.id, kind="sick",
+            start_date=date(2026, 3, 6), end_date=date(2026, 3, 6),
         ))
         db.session.commit()
         iris = User.query.filter_by(username="iris").first()
@@ -478,11 +509,13 @@ def test_report_flags_present_absent_offshore(app):
                            today=date(2026, 3, 31))[0]
         assert rep.present_days == 2
         assert rep.absent_days == 1          # Wed 03-04
-        assert rep.offshore_days == 2        # Thu+Fri
+        assert rep.offshore_days == 1        # Thu
+        assert rep.sick_days == 1            # Fri
         assert rep.net_hours == 16.0         # 2 full days x 8h
         statuses = {d.day.day: d.status for d in rep.days}
         assert statuses[4] == "absent"
         assert statuses[5] == "offshore"
+        assert statuses[6] == "sick"
 
 
 def test_report_weekend_credits_ten_hours(app):
@@ -541,20 +574,24 @@ def test_today_board_statuses(app):
         add_manual_punch(out, datetime(2026, 3, 2, 17, 0))  # two scans -> checked out
         add_user("missing", device_uid="92")               # no scans -> not arrived
         off = add_user("offsh", device_uid="93")
-        db.session.add(OffshoreMission(
-            user_id=off.id, start_date=date(2026, 3, 1), end_date=date(2026, 3, 5)))
+        db.session.add(Leave(user_id=off.id, kind="offshore",
+                             start_date=date(2026, 3, 1), end_date=date(2026, 3, 5)))
+        sik = add_user("siko", device_uid="95")
+        db.session.add(Leave(user_id=sik.id, kind="sick",
+                             start_date=date(2026, 3, 2), end_date=date(2026, 3, 2)))
         db.session.commit()
 
         users = [User.query.filter_by(username=u).first()
-                 for u in ("onsite", "doneuser", "missing", "offsh")]
+                 for u in ("onsite", "doneuser", "missing", "offsh", "siko")]
         board = build_today(users, today=monday)
         status = {r.name: r.status for r in board.rows}
         assert status["Onsite"] == "on_site"
         assert status["Doneuser"] == "checked_out"
         assert status["Missing"] == "not_arrived"
         assert status["Offsh"] == "offshore"
+        assert status["Siko"] == "sick"
         assert (board.on_site, board.checked_out, board.not_arrived,
-                board.offshore) == (1, 1, 1, 1)
+                board.offshore, board.on_leave) == (1, 1, 1, 1, 1)
 
 
 def test_today_board_weekend_has_no_absences(app):
