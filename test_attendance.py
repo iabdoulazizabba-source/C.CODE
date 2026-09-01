@@ -317,19 +317,44 @@ def test_manual_punch_creates_session(app):
 def test_ignored_punch_excluded_from_hours(app):
     with app.app_context():
         user = add_user("frank", device_uid="60")
+        # A clean lunch day (4 scans) plus one stray erroneous scan at 10:00.
         sync_from_device(FakeConnector(punches=[
             Punch("60", datetime(2026, 2, 3, 8, 0)),
+            Punch("60", datetime(2026, 2, 3, 10, 0)),   # stray
+            Punch("60", datetime(2026, 2, 3, 12, 0)),
+            Punch("60", datetime(2026, 2, 3, 14, 0)),
             Punch("60", datetime(2026, 2, 3, 18, 0)),
         ]))
-        frank = User.query.filter_by(username="frank").first()
-        assert frank.sessions()[0].hours == 10.0
-
-        # Ignore the late "out" scan -> only one active scan that day -> open.
-        late = max(frank.punches, key=lambda p: p.timestamp)
-        late.ignored = True
+        # Ignore the stray -> clean 4-scan day, the 10:00 excluded.
+        stray = next(p for p in user.punches
+                     if p.timestamp == datetime(2026, 2, 3, 10, 0))
+        stray.ignored = True
         db.session.commit()
-        sess = User.query.filter_by(username="frank").first().sessions()
-        assert sess[0].is_open
+        s = User.query.filter_by(username="frank").first().sessions()[0]
+        assert not s.is_open and not s.autofilled
+        assert s.net_hours == 8.0
+        assert datetime(2026, 2, 3, 10, 0) not in s.scans
+
+
+def test_autofill_incomplete_past_day(app):
+    with app.app_context():
+        user = add_user("walt", device_uid="61")
+        # Forgot to clock out on a past Monday -> single scan.
+        add_manual_punch(user, datetime(2026, 3, 2, 8, 5))
+        s = User.query.filter_by(username="walt").first().sessions()[0]
+        assert s.autofilled and not s.is_open
+        assert s.net_hours == 8.0
+        assert s.clock_in.strftime("%H:%M") == "08:00"
+        assert s.clock_out.strftime("%H:%M") == "18:00"
+        assert not s.is_late
+
+
+def test_incomplete_today_not_autofilled(app):
+    with app.app_context():
+        user = add_user("xena", device_uid="62")
+        add_manual_punch(user, datetime.combine(date.today(), dtime(8, 0)))
+        s = User.query.filter_by(username="xena").first().sessions()[0]
+        assert s.is_open and not s.autofilled
 
 
 def test_net_hours_single_span():

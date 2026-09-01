@@ -71,22 +71,31 @@ class User(UserMixin, db.Model):
     def is_admin(self):
         return self.role == "admin"
 
-    def sessions(self):
+    def sessions(self, today=None):
         """Daily work sessions for this user (most recent first).
 
         Punches flagged ``ignored`` (corrected away by an admin) are skipped.
-        Any admin lunch override for a day is applied to its session.
+        A past incomplete workday (a missed scan) is auto-completed to a
+        standard day; days on/after ``today`` (default the real date) are left
+        open. Any admin lunch override for a day is applied to its session.
         """
         active = [p for p in self.punches if not p.ignored]
         sess = build_sessions(sorted(active, key=lambda p: p.timestamp))
         overrides = {lo.work_date: lo.worked for lo in self.lunch_overrides}
+        today = today or date.today()
+        result = []
         for s in sess:
+            if (s.is_open and DEFAULT_SCHEDULE.autofill_incomplete
+                    and s.date < today
+                    and DEFAULT_SCHEDULE.is_workday(s.date)):
+                s = standard_day_session(s.date)
             if s.date in overrides:
                 s.lunch_override = overrides[s.date]  # admin override wins
             else:
                 # Deduct lunch on pre-cutover days; auto-detect afterwards.
                 s.lunch_override = DEFAULT_SCHEDULE.lunch_default(s.date)
-        return sess
+            result.append(s)
+        return result
 
     def leave_kind_on(self, day):
         """The leave kind (offshore/sick/holiday) covering ``day``, or None."""
@@ -218,6 +227,7 @@ class Session:
     def __init__(self, scans, lunch_override=None):
         self.scans = list(scans)
         self.lunch_override = lunch_override
+        self.autofilled = False  # set when an incomplete day was auto-completed
 
     @property
     def segments(self):
@@ -337,6 +347,25 @@ def build_sessions(punches, dedup_minutes=DEFAULT_DEDUP_MINUTES):
         sessions.append(Session(times))
     sessions.reverse()
     return sessions
+
+
+def standard_day_session(day):
+    """A synthetic standard workday (08:00-12:00, 14:00-18:00) for ``day``.
+
+    Used to auto-complete an incomplete day: clock-in at the scheduled start,
+    clock-out at the scheduled end, with the lunch break, giving the expected
+    full-day hours. Flagged ``autofilled`` so it can be shown as estimated.
+    """
+    sch = DEFAULT_SCHEDULE
+    scans = [
+        datetime.combine(day, sch.start),
+        datetime.combine(day, sch.break_start),
+        datetime.combine(day, sch.break_end),
+        datetime.combine(day, sch.end),
+    ]
+    session = Session(scans)
+    session.autofilled = True
+    return session
 
 
 class SyncResult:

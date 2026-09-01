@@ -26,6 +26,7 @@ class DayRecord:
     late: bool = False
     early: bool = False
     lunch_worked: bool = False
+    autofilled: bool = False
 
     @property
     def weekday(self):
@@ -60,7 +61,7 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
 
     reports = []
     for user in users:
-        sessions = {s.date: s for s in user.sessions()}
+        sessions = {s.date: s for s in user.sessions(today=today)}
         report = EmployeeReport(
             user_id=user.id, name=user.full_name, position=user.position or ""
         )
@@ -90,6 +91,7 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
                     net_hours=session.net_hours, overtime=session.overtime_hours,
                     late=session.is_late, early=session.is_early_leave,
                     lunch_worked=session.worked_break,
+                    autofilled=session.autofilled,
                 ))
                 report.present_days += 1
                 report.net_hours += session.net_hours
@@ -160,7 +162,7 @@ def build_today(users, schedule=DEFAULT_SCHEDULE, today=None):
                 board.on_leave += 1
             continue
 
-        session = next((s for s in user.sessions() if s.date == today), None)
+        session = next((s for s in user.sessions(today=today) if s.date == today), None)
         if session is None:
             if is_workday:
                 board.rows.append(TodayRow(user.id, user.full_name, "not_arrived"))

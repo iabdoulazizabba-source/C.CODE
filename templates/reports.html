@@ -95,6 +95,7 @@
         <td>{{ d.clock_out.strftime("%H:%M") if d.clock_out else "—" }}</td>
         <td>{{ d.net_hours|hours }}</td>
         <td>
+          {% if d.autofilled %}<span class="badge badge-open" title="Incomplete scans — auto-filled as a standard day">auto</span>{% endif %}
           {% if d.late %}<span class="badge badge-late">late</span>{% endif %}
           {% if d.early %}<span class="badge badge-early">left early</span>{% endif %}
           {% if d.lunch_worked %}<span class="badge badge-offshore">lunch</span>{% endif %}

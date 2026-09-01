@@ -69,6 +69,9 @@ class Schedule:
     # deducted (historical data has no lunch scans); on/after it the scan-based
     # rule applies. None disables the cutover.
     lunch_scanning_from: Optional[date] = None
+    # Auto-complete a past incomplete workday (a missed scan) as a standard
+    # 08:00-18:00 day instead of leaving it open/zero.
+    autofill_incomplete: bool = True
 
     # --- day classification ---
     def is_workday(self, day):
@@ -180,4 +183,6 @@ DEFAULT_SCHEDULE = Schedule(
     lunch_scanning_from=_parse_date(
         os.environ.get("LUNCH_SCANNING_FROM"), date(2026, 7, 6)
     ),
+    autofill_incomplete=os.environ.get("AUTOFILL_INCOMPLETE", "1").lower()
+    not in ("0", "false", "no"),
 )

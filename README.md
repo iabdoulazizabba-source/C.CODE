@@ -34,8 +34,11 @@ tag it as in vs out (`punch=255`). So per employee, per calendar day:
 Scan times are rounded to the nearest minute (≥30s up, otherwise down) before
 hours are computed, so totals carry no stray seconds.
 
-An **odd** number of scans (a missed clock-out) leaves the day open/incomplete.
-Raw punches are stored verbatim, so corrections don't require re-reading device.
+An **odd** number of scans (a missed clock-out) makes a day incomplete. A past
+incomplete workday is **auto-filled as a standard 08:00–18:00 day** (8 net
+hours, flagged "auto"); today's in-progress day is left open. Disable with
+`AUTOFILL_INCOMPLETE=0`. Raw punches are stored verbatim, so corrections don't
+require re-reading the device.
 
 ### Work schedule, hours & overtime
 
@@ -58,8 +61,9 @@ default 10 min) and **left early** (last scan before 18:00 − grace). Weekend
 days are labelled separately.
 
 Override the schedule with `WORK_START`, `WORK_END`, `BREAK_START`, `BREAK_END`,
-`LATE_GRACE_MINUTES`, `WEEKEND_CREDIT_HOURS`, and `LUNCH_SCANNING_FROM`
-(e.g. `WORK_END=17:00`, `LUNCH_SCANNING_FROM=2026-07-06`).
+`LATE_GRACE_MINUTES`, `WEEKEND_CREDIT_HOURS`, `LUNCH_SCANNING_FROM`, and
+`AUTOFILL_INCOMPLETE` (e.g. `WORK_END=17:00`, `LUNCH_SCANNING_FROM=2026-07-06`,
+`AUTOFILL_INCOMPLETE=0`).
 
 ## Features
 

@@ -117,6 +117,7 @@
         </td>
         <td>
           {% if s.is_open %}<span class="badge badge-open">incomplete</span>{% endif %}
+          {% if s.autofilled %}<span class="badge badge-open" title="Missed scan — auto-filled as a standard day">auto</span>{% endif %}
           {% if s.is_late %}<span class="badge badge-late" title="{{ s.lateness_minutes }} min late">late</span>{% endif %}
           {% if s.is_early_leave %}<span class="badge badge-early">left early</span>{% endif %}
           {% if s.overtime_hours %}<span class="badge badge-ot">+{{ s.overtime_hours|hours }}h OT</span>{% endif %}
