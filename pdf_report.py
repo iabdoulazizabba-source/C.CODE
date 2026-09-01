@@ -50,7 +50,7 @@ SUMMARY_COLS = [
 DAY_COLS = [
     ("Date", 28, lambda d: d.day.isoformat()),
     ("Day", 16, lambda d: d.weekday),
-    ("Status", 26, lambda d: d.status),
+    ("Status", 26, lambda d: d.status + (" (auto)" if d.autofilled else "")),
     ("In", 22, lambda d: d.clock_in.strftime("%H:%M") if d.clock_in else "-"),
     ("Out", 22, lambda d: d.clock_out.strftime("%H:%M") if d.clock_out else "-"),
     ("Net h", 20, lambda d: str(round_hours(d.net_hours))),
