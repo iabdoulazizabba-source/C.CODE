@@ -67,6 +67,8 @@ def create_app(database_uri=None, connector=None, extra_config=None):
         database_uri or "sqlite:///attendance.db"
     )
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    # Wait for a lock instead of erroring under concurrent LAN users + poller.
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"connect_args": {"timeout": 15}}
 
     # Device configuration (overridable via environment variables).
     app.config["DEVICE_DRIVER"] = os.environ.get("DEVICE_DRIVER", "zk")
@@ -783,4 +785,11 @@ app = create_app()
 if __name__ == "__main__":
     # Single process (no reloader) so the background poller thread is stable.
     start_background_poller(app)
-    app.run(debug=True, use_reloader=False)
+    host = os.environ.get("HOST", "127.0.0.1")  # set HOST=0.0.0.0 for LAN access
+    port = int(os.environ.get("PORT", "5000"))
+    try:
+        from waitress import serve  # production-grade, handles many users
+        print(f" * Serving on http://{host}:{port}  (Ctrl+C to stop)")
+        serve(app, host=host, port=port, threads=8)
+    except ImportError:
+        app.run(host=host, port=port, debug=False, use_reloader=False)
