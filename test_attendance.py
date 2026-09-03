@@ -5,7 +5,13 @@ from datetime import date, datetime, time as dtime
 import pytest
 
 from app import create_app
-from device import FakeConnector, Punch, DeviceUser
+from device import (
+    FakeConnector,
+    Punch,
+    DeviceUser,
+    ZKDiscoveryConnector,
+    connector_from_config,
+)
 from models import Session
 from reporting import build_report, build_today
 from schedule import DEFAULT_SCHEDULE, Schedule, round_hours
@@ -300,6 +306,44 @@ def test_sync_reports_error_when_device_unreachable(app):
         result = sync_from_device(FakeConnector(reachable=False))
         assert not result.ok
         assert "unreachable" in result.error.lower()
+
+
+def test_discovery_finds_device_by_serial(monkeypatch):
+    # Fake a subnet where only .77 answers, with the wanted serial on .88.
+    conn = ZKDiscoveryConnector(serial="CQQC243161174", subnet="192.168.10")
+    open_hosts = {"192.168.10.77", "192.168.10.88"}
+    serials = {"192.168.10.77": "OTHER", "192.168.10.88": "CQQC243161174"}
+    monkeypatch.setattr(conn, "_port_open", lambda h: h in open_hosts)
+    monkeypatch.setattr(conn, "_serial_of", lambda h: serials.get(h))
+
+    assert conn.resolve() == "192.168.10.88"
+    assert conn.host == "192.168.10.88"
+    assert conn.ping()
+
+    # Cached host is reused without a rescan while it still matches.
+    monkeypatch.setattr(conn, "_scan_hosts",
+                        lambda: (_ for _ in ()).throw(AssertionError("rescanned")))
+    assert conn.resolve() == "192.168.10.88"
+
+
+def test_discovery_returns_none_when_serial_absent(monkeypatch):
+    conn = ZKDiscoveryConnector(serial="NOPE", subnet="192.168.10")
+    monkeypatch.setattr(conn, "_scan_hosts", lambda: ["192.168.10.5"])
+    monkeypatch.setattr(conn, "_serial_of", lambda h: "SOMETHINGELSE")
+    monkeypatch.setattr(conn, "_port_open", lambda h: True)
+    assert conn.resolve() is None
+    assert not conn.ping()
+
+
+def test_connector_from_config_uses_discovery_when_serial_set():
+    conn = connector_from_config({
+        "DEVICE_DRIVER": "zk", "DEVICE_SERIAL": "CQQC243161174",
+        "DEVICE_HOST": "192.168.10.199",
+    })
+    assert isinstance(conn, ZKDiscoveryConnector)
+    assert conn.serial == "CQQC243161174"
+    assert conn.subnet == "192.168.10"      # derived from DEVICE_HOST
+    assert conn.hint_host == "192.168.10.199"
 
 
 # --- corrections & offshore missions --------------------------------------

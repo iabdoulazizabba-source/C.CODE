@@ -152,18 +152,141 @@ class FakeConnector:
         self._punches.append(punch)
 
 
+class ZKDiscoveryConnector:
+    """Find a ZKTeco terminal by its serial number, wherever it is on the LAN.
+
+    Scans ``subnet``.1-254 for an open device port, connects to each and reads
+    the serial, and uses the host whose serial matches ``serial``. The found
+    host is cached (and re-verified by serial) so routine polling is fast; if
+    the device moves, the next lookup re-discovers it. This makes the app
+    immune to IP changes and address conflicts.
+    """
+
+    def __init__(self, serial, subnet, port=4370, password=0,
+                 force_udp=False, timeout=5, hint_host=None):
+        self.serial = str(serial).strip()
+        self.subnet = subnet  # e.g. "192.168.10"
+        self.port = port
+        self.password = password
+        self.force_udp = force_udp
+        self.timeout = timeout
+        self.hint_host = hint_host  # try this address first (last known IP)
+        self._host = None  # cached discovered host
+
+    # --- low-level helpers (overridable in tests) ---
+    def _port_open(self, host):
+        import socket
+
+        try:
+            with socket.create_connection((host, self.port), timeout=1.0):
+                return True
+        except OSError:
+            return False
+
+    def _serial_of(self, host):
+        conn = None
+        try:
+            conn = ZKConnector(host, port=self.port, password=self.password,
+                               force_udp=self.force_udp, timeout=self.timeout)._zk().connect()
+            return (conn.get_serialnumber() or "").strip()
+        except Exception:
+            return None
+        finally:
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
+
+    def _scan_hosts(self):
+        import concurrent.futures as cf
+
+        hosts = [f"{self.subnet}.{i}" for i in range(1, 255)]
+        found = []
+        with cf.ThreadPoolExecutor(max_workers=128) as ex:
+            for host, is_open in zip(hosts, ex.map(self._port_open, hosts)):
+                if is_open:
+                    found.append(host)
+        return found
+
+    def resolve(self, force=False):
+        """Return the host running our serial, or None. Caches the result."""
+        candidates = []
+        if not force and self._host:
+            candidates.append(self._host)
+        if self.hint_host and self.hint_host not in candidates:
+            candidates.append(self.hint_host)
+        for host in candidates:
+            if self._port_open(host) and self._serial_of(host) == self.serial:
+                self._host = host
+                return host
+        for host in self._scan_hosts():
+            if self._serial_of(host) == self.serial:
+                self._host = host
+                return host
+        self._host = None
+        return None
+
+    @property
+    def host(self):
+        return self._host
+
+    def _delegate(self, method):
+        host = self.resolve()
+        if host is None:
+            raise DeviceError(
+                f"No terminal with serial {self.serial} found on "
+                f"{self.subnet}.0/24"
+            )
+        conn = ZKConnector(host, port=self.port, password=self.password,
+                           force_udp=self.force_udp, timeout=self.timeout)
+        try:
+            return getattr(conn, method)()
+        except DeviceError:
+            # Cached host may be stale/hijacked -> rediscover once and retry.
+            host = self.resolve(force=True)
+            if host is None:
+                raise
+            conn = ZKConnector(host, port=self.port, password=self.password,
+                               force_udp=self.force_udp, timeout=self.timeout)
+            return getattr(conn, method)()
+
+    def ping(self):
+        return self.resolve() is not None
+
+    def fetch_punches(self):
+        return self._delegate("fetch_punches")
+
+    def fetch_users(self):
+        return self._delegate("fetch_users")
+
+
 def connector_from_config(config) -> Connector:
     """Build the connector named by the app config.
 
-    ``DEVICE_DRIVER`` selects ``zk`` (real) or ``fake``. For ``zk`` the
-    host/port come from ``DEVICE_HOST`` / ``DEVICE_PORT``.
+    ``DEVICE_DRIVER`` selects ``zk`` (real) or ``fake``. If ``DEVICE_SERIAL``
+    is set, the terminal is auto-discovered by serial across ``DEVICE_SUBNET``
+    (derived from ``DEVICE_HOST`` when not given); otherwise a fixed
+    ``DEVICE_HOST`` is used.
     """
     driver = (config.get("DEVICE_DRIVER") or "zk").lower()
     if driver == "fake":
         return FakeConnector()
-    return ZKConnector(
-        host=config["DEVICE_HOST"],
-        port=int(config.get("DEVICE_PORT", 4370)),
-        password=int(config.get("DEVICE_PASSWORD", 0)),
-        force_udp=bool(config.get("DEVICE_FORCE_UDP", False)),
-    )
+
+    port = int(config.get("DEVICE_PORT", 4370))
+    password = int(config.get("DEVICE_PASSWORD", 0))
+    force_udp = bool(config.get("DEVICE_FORCE_UDP", False))
+    host = config.get("DEVICE_HOST")
+    serial = config.get("DEVICE_SERIAL")
+
+    if serial:
+        subnet = config.get("DEVICE_SUBNET")
+        if not subnet and host:
+            subnet = host.rsplit(".", 1)[0]
+        return ZKDiscoveryConnector(
+            serial=serial, subnet=subnet or "192.168.10", port=port,
+            password=password, force_udp=force_udp, hint_host=host,
+        )
+
+    return ZKConnector(host=host, port=port, password=password,
+                       force_udp=force_udp)

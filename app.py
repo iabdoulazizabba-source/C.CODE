@@ -71,6 +71,9 @@ def create_app(database_uri=None, connector=None, extra_config=None):
     # Device configuration (overridable via environment variables).
     app.config["DEVICE_DRIVER"] = os.environ.get("DEVICE_DRIVER", "zk")
     app.config["DEVICE_HOST"] = os.environ.get("DEVICE_HOST")
+    # Auto-discover the terminal by serial (immune to IP changes/conflicts).
+    app.config["DEVICE_SERIAL"] = os.environ.get("DEVICE_SERIAL")
+    app.config["DEVICE_SUBNET"] = os.environ.get("DEVICE_SUBNET")
     app.config["DEVICE_PORT"] = int(os.environ.get("DEVICE_PORT", "4370"))
     app.config["DEVICE_PASSWORD"] = int(os.environ.get("DEVICE_PASSWORD", "0"))
     app.config["DEVICE_FORCE_UDP"] = (
@@ -315,11 +318,17 @@ def register_routes(app):
             .all()
         )
 
+        # In discovery mode the address is whatever we found; show it.
+        serial = app.config.get("DEVICE_SERIAL")
+        found_host = getattr(connector, "host", None)
+        display_host = found_host or app.config.get("DEVICE_HOST")
+
         return render_template(
             "device.html",
-            host=app.config.get("DEVICE_HOST"),
+            host=display_host,
             port=app.config.get("DEVICE_PORT"),
             driver=app.config.get("DEVICE_DRIVER"),
+            serial=serial,
             configured=connector is not None,
             online=online,
             device_users=device_users,

@@ -6,7 +6,12 @@
 
   <table class="kv">
     <tr><th>Driver</th><td>{{ driver }}</td></tr>
+    {% if serial %}
+    <tr><th>Find by serial</th><td>{{ serial }}</td></tr>
+    <tr><th>Found at</th><td>{{ host or "searching…" }}{% if host %}:{{ port }}{% endif %}</td></tr>
+    {% else %}
     <tr><th>Address</th><td>{{ host or "—" }}{% if host %}:{{ port }}{% endif %}</td></tr>
+    {% endif %}
     <tr>
       <th>Status</th>
       <td>

@@ -114,7 +114,9 @@ person's **Device ID** to match their enrollment number on the terminal.
 | Variable               | Default      | Purpose                                            |
 | ---------------------- | ------------ | -------------------------------------------------- |
 | `DEVICE_DRIVER`        | `zk`         | `zk` for a real device, `fake` for a demo/no HW    |
-| `DEVICE_HOST`          | *(unset)*    | Terminal IP address, e.g. `192.168.1.201`          |
+| `DEVICE_HOST`          | *(unset)*    | Fixed terminal IP, e.g. `192.168.1.201`            |
+| `DEVICE_SERIAL`        | *(unset)*    | Auto-find the terminal by serial on any IP (recommended — immune to IP changes/conflicts) |
+| `DEVICE_SUBNET`        | from host    | Subnet to scan for `DEVICE_SERIAL`, e.g. `192.168.10` |
 | `DEVICE_PORT`          | `4370`       | ZKTeco TCP port                                    |
 | `DEVICE_PASSWORD`      | `0`          | Device comm key, if you set one                    |
 | `DEVICE_POLL_INTERVAL` | `60`         | Seconds between automatic syncs                    |
