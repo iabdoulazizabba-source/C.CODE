@@ -77,11 +77,12 @@ class User(UserMixin, db.Model):
         Punches flagged ``ignored`` (corrected away by an admin) are skipped.
         A past incomplete workday (a missed scan) is auto-completed to a
         standard day; days on/after ``today`` (default the real date) are left
-        open. Any admin lunch override for a day is applied to its session.
+        open. The lunch break is unpaid unless an admin has marked the day as
+        worked-through-lunch.
         """
         active = [p for p in self.punches if not p.ignored]
         sess = build_sessions(sorted(active, key=lambda p: p.timestamp))
-        overrides = {lo.work_date: lo.worked for lo in self.lunch_overrides}
+        lunch_worked = {lo.work_date for lo in self.lunch_overrides if lo.worked}
         today = today or date.today()
         result = []
         for s in sess:
@@ -89,11 +90,7 @@ class User(UserMixin, db.Model):
                     and s.date < today
                     and DEFAULT_SCHEDULE.is_workday(s.date)):
                 s = standard_day_session(s.date)
-            if s.date in overrides:
-                s.lunch_override = overrides[s.date]  # admin override wins
-            else:
-                # Deduct lunch on pre-cutover days; auto-detect afterwards.
-                s.lunch_override = DEFAULT_SCHEDULE.lunch_default(s.date)
+            s.lunch_worked = s.date in lunch_worked
             result.append(s)
         return result
 
@@ -196,11 +193,10 @@ class Leave(db.Model):
 
 
 class LunchOverride(db.Model):
-    """Admin override of a day's lunch handling.
+    """Admin marker crediting a day's 12:00-14:00 lunch as worked overtime.
 
-    ``worked=True`` credits the 12:00-14:00 break as overtime; ``worked=False``
-    forces it deducted. With no row for a day, the app decides automatically
-    from the scans (did the employee check out for lunch?).
+    ``worked=True`` credits the break. Lunch is otherwise always unpaid — it is
+    only ever counted when an admin marks the day; there is no auto-detection.
     """
 
     __tablename__ = "lunch_worked"
@@ -220,13 +216,13 @@ class Session:
     Scans are paired into work *segments* (in/out, in/out, ...). An even count
     is fully paired; an odd count leaves the day *open* (someone forgot to
     scan out). ``net_hours`` is the paid total: regular in-window hours plus
-    overtime (before 08:00, after 18:00, and the lunch when worked), or a flat
-    weekend credit. ``lunch_override`` (True/False/None) is an admin override.
+    overtime (before 08:00, after 18:00, and the lunch only when an admin marks
+    ``lunch_worked``), or a flat weekend credit.
     """
 
-    def __init__(self, scans, lunch_override=None):
+    def __init__(self, scans, lunch_worked=False):
         self.scans = list(scans)
-        self.lunch_override = lunch_override
+        self.lunch_worked = lunch_worked  # admin-marked worked-through-lunch
         self.autofilled = False  # set when an incomplete day was auto-completed
 
     @property
@@ -271,7 +267,7 @@ class Session:
                 weekend=round(float(DEFAULT_SCHEDULE.weekend_credit_hours), 2)
             )
         return DEFAULT_SCHEDULE.compute_hours(
-            self.segments, lunch_override=self.lunch_override
+            self.segments, lunch_worked=self.lunch_worked
         )
 
     @property

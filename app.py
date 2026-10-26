@@ -531,6 +531,8 @@ def register_routes(app):
     @app.route("/employees/<int:user_id>/lunch", methods=["POST"])
     @admin_required
     def set_lunch(user_id):
+        # Toggle whether a day's lunch is credited as worked (extra). Lunch is
+        # unpaid by default; this is the only way it counts.
         user = db.session.get(User, user_id)
         if user is None:
             abort(404)
@@ -539,22 +541,16 @@ def register_routes(app):
         except ValueError:
             flash("Invalid date.", "error")
             return redirect(url_for("employee_detail", user_id=user.id))
-        state = request.form.get("state", "auto")
-        row = LunchOverride.query.filter_by(user_id=user.id, work_date=day).first()
-        if state == "auto":
-            if row:
-                db.session.delete(row)
-            message = "auto (from scans)"
+        row = LunchOverride.query.filter_by(
+            user_id=user.id, work_date=day, worked=True
+        ).first()
+        if row:
+            db.session.delete(row)
+            flash(f"Lunch on {day} no longer counted (deducted).", "success")
         else:
-            worked = state == "worked"
-            if row:
-                row.worked = worked
-            else:
-                db.session.add(LunchOverride(user_id=user.id, work_date=day,
-                                             worked=worked))
-            message = "worked (+2h)" if worked else "taken (deducted)"
+            db.session.add(LunchOverride(user_id=user.id, work_date=day, worked=True))
+            flash(f"Lunch on {day} credited as worked (+2h).", "success")
         db.session.commit()
-        flash(f"Lunch for {day}: {message}.", "success")
         return redirect(url_for("employee_detail", user_id=user.id))
 
     @app.route("/punches/<int:punch_id>/restore", methods=["POST"])

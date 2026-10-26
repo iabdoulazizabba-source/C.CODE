@@ -7,8 +7,7 @@ be overridden with environment variables (see ``DEFAULT_SCHEDULE`` below).
 
 import os
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
-from typing import Optional
+from datetime import datetime, time, timedelta
 
 _MIDNIGHT = time(0, 0)
 
@@ -18,13 +17,6 @@ def _parse_time(value, default):
         hh, mm = value.split(":")
         return time(int(hh), int(mm))
     except (ValueError, AttributeError):
-        return default
-
-
-def _parse_date(value, default):
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except (ValueError, TypeError):
         return default
 
 
@@ -65,10 +57,6 @@ class Schedule:
     break_end: time = time(14, 0)
     late_grace_minutes: int = 10
     weekend_credit_hours: float = 10.0  # flat extra for a Sat/Sun present
-    # Date crew began checking in/out for lunch. Before it, lunch is always
-    # deducted (historical data has no lunch scans); on/after it the scan-based
-    # rule applies. None disables the cutover.
-    lunch_scanning_from: Optional[date] = None
     # Auto-complete a past incomplete workday (a missed scan) as a standard
     # 08:00-18:00 day instead of leaving it open/zero.
     autofill_incomplete: bool = True
@@ -76,16 +64,6 @@ class Schedule:
     # --- day classification ---
     def is_workday(self, day):
         return day.weekday() in self.work_days
-
-    def lunch_default(self, day):
-        """Default lunch handling for a day with no admin override.
-
-        ``False`` (deduct) for days before lunch scanning started; ``None``
-        (decide automatically from the scans) on or after.
-        """
-        if self.lunch_scanning_from and day < self.lunch_scanning_from:
-            return False
-        return None
 
     @property
     def break_hours(self):
@@ -103,15 +81,14 @@ class Schedule:
         secs = (min(end_dt, win_end) - max(start_dt, win_start)).total_seconds()
         return max(0.0, secs / 3600)
 
-    def compute_hours(self, segments, lunch_override=None):
+    def compute_hours(self, segments, lunch_worked=False):
         """Split a day's work ``segments`` (list of (in, out)) into a
         :class:`HoursBreakdown`.
 
         Regular hours are in-window time (08-12 and 14-18). Overtime is time
-        before the start, time after the end, and the 12:00-14:00 lunch when
-        it was *worked* — i.e. no segment left the desk for lunch. ``lunch_
-        override`` forces that: ``True`` credits the break, ``False`` deducts
-        it, ``None`` (default) decides from the segments. Weekends earn a flat
+        before the start and after the end. The 12:00-14:00 lunch is **always
+        deducted** (unpaid) unless ``lunch_worked`` is set by an admin, in
+        which case those hours are credited as extra. Weekends earn a flat
         credit when present.
         """
         if not segments:
@@ -124,32 +101,27 @@ class Schedule:
             return datetime.combine(day, t)
 
         day_end = datetime.combine(day, _MIDNIGHT) + timedelta(days=1)
-        regular = early = late = auto_break = 0.0
+        regular = early = late = 0.0
         for clock_in, clock_out in segments:
             regular += self._overlap(clock_in, clock_out, at(self.start), at(self.break_start))
             regular += self._overlap(clock_in, clock_out, at(self.break_end), at(self.end))
             early += self._overlap(clock_in, clock_out, at(_MIDNIGHT), at(self.start))
             late += self._overlap(clock_in, clock_out, at(self.end), day_end)
-            auto_break += self._overlap(clock_in, clock_out, at(self.break_start),
-                                        at(self.break_end))
 
-        if lunch_override is True:
+        break_worked = 0.0
+        if lunch_worked:
             first_in, last_out = segments[0][0], segments[-1][1]
             break_worked = self._overlap(first_in, last_out, at(self.break_start),
                                          at(self.break_end))
-        elif lunch_override is False:
-            break_worked = 0.0
-        else:
-            break_worked = auto_break
 
         return HoursBreakdown(
             regular=round(regular, 2), early=round(early, 2),
             break_worked=round(break_worked, 2), late=round(late, 2),
         )
 
-    def net_hours(self, start_dt, end_dt, lunch_override=None):
+    def net_hours(self, start_dt, end_dt, lunch_worked=False):
         """Total paid hours for a single continuous span (regular + extra)."""
-        return self.compute_hours([(start_dt, end_dt)], lunch_override).total
+        return self.compute_hours([(start_dt, end_dt)], lunch_worked).total
 
     # --- flags ---
     def _late_limit(self, day):
@@ -180,9 +152,6 @@ DEFAULT_SCHEDULE = Schedule(
     break_end=_parse_time(os.environ.get("BREAK_END"), time(14, 0)),
     late_grace_minutes=int(os.environ.get("LATE_GRACE_MINUTES", "10")),
     weekend_credit_hours=float(os.environ.get("WEEKEND_CREDIT_HOURS", "10")),
-    lunch_scanning_from=_parse_date(
-        os.environ.get("LUNCH_SCANNING_FROM"), date(2026, 7, 6)
-    ),
     autofill_incomplete=os.environ.get("AUTOFILL_INCOMPLETE", "1").lower()
     not in ("0", "false", "no"),
 )

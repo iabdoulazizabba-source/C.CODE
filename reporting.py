@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
-from schedule import DEFAULT_SCHEDULE
+from schedule import DEFAULT_SCHEDULE, round_hours
 
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -77,8 +77,10 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
                     net_hours=session.net_hours, overtime=session.overtime_hours,
                 ))
                 report.weekend_days += 1
-                report.net_hours += session.net_hours
-                report.overtime += session.overtime_hours
+                # Sum the per-day *rounded* hours so the whole-hour totals
+                # equal the sum of the displayed daily values.
+                report.net_hours += round_hours(session.net_hours)
+                report.overtime += round_hours(session.overtime_hours)
             elif session is not None and session.is_open:
                 report.days.append(DayRecord(day, "incomplete", session.clock_in,
                                              None, late=session.is_late))
@@ -94,8 +96,8 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
                     autofilled=session.autofilled,
                 ))
                 report.present_days += 1
-                report.net_hours += session.net_hours
-                report.overtime += session.overtime_hours
+                report.net_hours += round_hours(session.net_hours)
+                report.overtime += round_hours(session.overtime_hours)
                 if session.is_late:
                     report.late_days += 1
             elif (kind := user.leave_kind_on(day)):  # offshore | sick | holiday
@@ -108,8 +110,9 @@ def build_report(users, start, end, schedule=DEFAULT_SCHEDULE, today=None):
             # else: weekend with no work -> not recorded
             day += timedelta(days=1)
 
-        report.net_hours = round(report.net_hours, 2)
-        report.overtime = round(report.overtime, 2)
+        # Already whole-hour sums; keep as integers.
+        report.net_hours = int(report.net_hours)
+        report.overtime = int(report.overtime)
         reports.append(report)
 
     return reports
